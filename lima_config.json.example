@@ -1,0 +1,4 @@
+{
+    "auth_url": "https://your-auth-server.example.com/validate",
+    "license_key": "YOUR_LIMA_LICENSE_KEY_HERE"
+}

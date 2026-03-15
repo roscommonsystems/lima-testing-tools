@@ -1,0 +1,46 @@
+# Sensitive configuration files
+lima_config.json
+*.key
+*.pem
+
+# Planning documents (internal)
+plans/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+.env
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+
+# Test outputs
+test_results.json
+regression_tests/test_results.json
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Logs
+*.log
