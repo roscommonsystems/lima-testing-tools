@@ -20,6 +20,7 @@ sys.path.insert(0, regression_tests_dir)
 
 from lima_regression_tests import main as run_regression_tests
 
+print("Starting LIMA Regression Testing Suite...")
 
 def main():
     """Main entry point for the LIMA Testing Suite."""
