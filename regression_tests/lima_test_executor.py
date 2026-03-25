@@ -417,20 +417,15 @@ class LimaTestExecutor:
             lima_window.maximize()
             time.sleep(1.0)
             
-            # Get window position and click in center-bottom area (likely input field location)
+            # Click the window center to focus the text input
             try:
-                window_rect = lima_window
-                # Calculate center-bottom position for text input
-                click_x = window_rect.left + (window_rect.width // 2)
-                click_y = window_rect.top + int(window_rect.height * 0.85)  # 85% down from top
-                
-                # Click to focus text input
+                click_x = lima_window.left + (lima_window.width // 2)
+                click_y = lima_window.top + (lima_window.height // 2)
+
                 pyautogui.click(click_x, click_y)
                 time.sleep(0.5)
             except Exception:
-                # Fallback: just click in current position
-                pyautogui.click()
-                time.sleep(0.5)
+                pass
             
             # ========================================
             # STEP 1: Take BEFORE screenshot
@@ -1118,23 +1113,18 @@ class LimaTestExecutor:
             else:
                 print("  OK BEFORE screenshot captured")
             
-            # Calculate mouse click positions for links
-            website_link_x = about_window.left + int(about_window.width * 0.25)
-            website_link_y = about_window.top + int(about_window.height * 0.23)
-            
-            doc_link_x = about_window.left + int(about_window.width * 0.3)
-            doc_link_y = about_window.top + int(about_window.height * 0.3)
-            
             browser_opened_count = 0
-            
+
             # ========================================
-            # Test 1: Click "Roscommon Systems" website link
+            # Test 1: Activate "Roscommon Systems" website link via Tab + Enter
             # ========================================
-            print(f"  [3/6] Clicking Website link at ({website_link_x}, {website_link_y})...")
+            print(f"  [3/6] Activating Website link via Tab + Enter...")
             try:
                 about_window.activate()
                 time.sleep(0.5)
-                pyautogui.click(website_link_x, website_link_y)
+                pyautogui.press('tab')   # Move focus to first interactive control (website link)
+                time.sleep(0.3)
+                pyautogui.press('enter')  # Activate the link
                 time.sleep(3.0)
                 
                 # ========================================
@@ -1190,13 +1180,15 @@ class LimaTestExecutor:
                 print(f"  Error clicking Website link: {str(e)}")
             
             # ========================================
-            # Test 2: Click "LIMA Documentation" link
+            # Test 2: Activate "LIMA Documentation" link via Tab + Enter
             # ========================================
-            print(f"  [5/6] Clicking Documentation link at ({doc_link_x}, {doc_link_y})...")
+            print(f"  [5/6] Activating Documentation link via Tab + Enter...")
             try:
                 about_window.activate()
                 time.sleep(0.5)
-                pyautogui.click(doc_link_x, doc_link_y)
+                pyautogui.press('tab')   # Move focus to next interactive control (docs link)
+                time.sleep(0.3)
+                pyautogui.press('enter')  # Activate the link
                 time.sleep(3.0)
                 
                 # ========================================
@@ -1342,9 +1334,9 @@ class LimaTestExecutor:
                             except Exception:
                                 pass  # Maximize is optional
                             
-                            # Click on LIMA to ensure focus
+                            # Click the window center to ensure focus
                             click_x = window.left + (window.width // 2)
-                            click_y = window.top + int(window.height * 0.85)
+                            click_y = window.top + (window.height // 2)
                             pyautogui.click(click_x, click_y)
                             time.sleep(0.5)
                             
