@@ -269,18 +269,3 @@ class LimaTestReporter:
                 return False, f"Desktop NOT shown - {visible_app_windows} windows still visible"
         except Exception as e:
             return False, f"Could not verify desktop: {str(e)}"
-
-    @staticmethod
-    def verify_volume_changed():
-        """
-        Verify system volume was changed.
-        Note: This is difficult to verify programmatically without additional dependencies.
-        For regression testing, we just verify LIMA didn't crash.
-        
-        Returns:
-            tuple: (bool, str) - (True always, message)
-        """
-        # Volume changes are hard to verify without pycaw or similar
-        # For now, we'll consider it passed if LIMA is still running
-        # In future, could use: from pycaw.pycaw import AudioUtilities
-        return True, "Volume command executed (LIMA stable, no direct volume verification)"
