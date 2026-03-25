@@ -98,7 +98,16 @@ class LimaTestExecutor:
         try:
             # Minimize all other windows first for clean environment
             LimaTestUtils.minimize_all_other_windows()
-            
+
+            # Require API key before running any tests
+            print("Checking API key availability...")
+            if not LimaTestUtils.initialize_openrouter_api_key():
+                print("ERROR: OPEN_ROUTER_API_KEY could not be retrieved. Aborting test run.")
+                print("  Hint: Make sure lima_config.json is properly configured with a valid license key.")
+                self.reporter.finalize_results()
+                return False
+            print("  OK API key verified\n")
+
             # Test 1: Find LIMA executable first
             if not self._test_lima_discovery():
                 self.reporter.finalize_results()
