@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.py$\")",
+      "Bash(grep -r \"from lima_test_utils import\\\\|import lima_test_utils\\\\|from.*LimaTestUtils\\\\|import.*LimaTestUtils\" c:UserswhiteDesktopcodelima-testing-tools --include=*.py)",
+      "Bash(grep -r \"\\\\.add_test_result\\\\|\\\\.add_error\" c:UserswhiteDesktopcodelima-testing-tools --include=*.py)"
+    ]
+  }
+}

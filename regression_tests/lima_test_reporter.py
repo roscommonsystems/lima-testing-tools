@@ -6,8 +6,10 @@ Handles test result reporting, verification helpers, and output generation.
 import os
 import json
 import time
+import ctypes
 import pyautogui
 import pygetwindow as gw
+import psutil
 from datetime import datetime
 
 from lima_test_utils import TEST_PASSED, TEST_FAILED
@@ -219,26 +221,50 @@ class LimaTestReporter:
     def verify_start_menu_opened():
         """
         Verify the Start menu opened.
-        
+
         Returns:
             tuple: (bool, str) - (True if opened, message)
         """
         time.sleep(1.0)
-        
-        # Check for Start menu window or search window
+
+        user32 = ctypes.windll.user32
+
+        # Primary: check if the foreground window belongs to StartMenuExperienceHost.exe
         try:
-            all_windows = gw.getAllWindows()
-            for window in all_windows:
-                title_lower = window.title.lower()
-                if "start" in title_lower or "search" in title_lower or window.title == "":
-                    # Empty title with specific size could be Start menu
-                    if window.width > 300 and window.height > 400:
-                        return True, "Start menu/Search window detected"
+            hwnd = user32.GetForegroundWindow()
+            pid = ctypes.c_ulong()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            proc = psutil.Process(pid.value)
+            if proc.name().lower() == "startmenuexperiencehost.exe":
+                return True, "Start menu detected (StartMenuExperienceHost in foreground)"
         except Exception:
             pass
-        
-        # Alternative: Check if there's a new window on screen
-        return False, "Start menu NOT detected (may have opened and closed quickly)"
+
+        # Fallback: enumerate all visible windows and check if any belongs to
+        # StartMenuExperienceHost.exe. This catches the case where the menu opened
+        # but lost focus before we checked (e.g. another window grabbed it).
+        try:
+            found = []
+
+            def _enum_callback(hwnd, _):
+                if user32.IsWindowVisible(hwnd):
+                    pid = ctypes.c_ulong()
+                    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                    try:
+                        if psutil.Process(pid.value).name().lower() == "startmenuexperiencehost.exe":
+                            found.append(hwnd)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+                return True
+
+            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int))
+            user32.EnumWindows(WNDENUMPROC(_enum_callback), 0)
+            if found:
+                return True, "Start menu detected (StartMenuExperienceHost has visible window)"
+        except Exception:
+            pass
+
+        return False, "Start menu NOT detected"
 
     @staticmethod
     def verify_desktop_shown():

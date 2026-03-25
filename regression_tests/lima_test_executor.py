@@ -10,11 +10,7 @@ import pyautogui
 import pygetwindow as gw
 import psutil
 
-from lima_test_utils import (
-    TEST_PASSED, 
-    TEST_FAILED, 
-    LimaTestUtils
-)
+from lima_test_utils import *
 from lima_test_reporter import LimaTestReporter
 
 
@@ -97,14 +93,14 @@ class LimaTestExecutor:
         """
         try:
             # Minimize all other windows first for clean environment
-            LimaTestUtils.minimize_all_other_windows()
+            minimize_all_other_windows()
 
             # Note: print() is used intentionally throughout this module instead of the logging
             # module. These tests are run via .bat scripts where stdout is the primary output channel.
 
             # Require API key before running any tests
             print("Checking API key availability...")
-            if not LimaTestUtils.initialize_openrouter_api_key():
+            if not initialize_openrouter_api_key():
                 print("ERROR: OPEN_ROUTER_API_KEY could not be retrieved. Aborting test run.")
                 print("  Hint: Make sure lima_config.json is properly configured with a valid license key.")
                 self.reporter.finalize_results()
@@ -208,7 +204,7 @@ class LimaTestExecutor:
             bool: True if executable found, False otherwise
         """
         self.lima_install_path = None
-        self.lima_exe_full_path = LimaTestUtils.find_lima_executable()
+        self.lima_exe_full_path = find_lima_executable()
         
         if self.lima_exe_full_path:
             # Extract installation directory
@@ -224,7 +220,7 @@ class LimaTestExecutor:
     
     def _test_prerun_crash_logs(self):
         """Test: Check for pre-existing crash logs before starting LIMA."""
-        crash_info = LimaTestUtils.check_crash_logs(self.lima_install_path)
+        crash_info = check_crash_logs(self.lima_install_path)
         
         if crash_info.get("exists"):
             self.crash_log_baseline = crash_info
@@ -258,7 +254,7 @@ class LimaTestExecutor:
                 time.sleep(4)
                 
                 # Find the LIMA process
-                self.lima_process = LimaTestUtils.find_process_by_name(self.lima_exe_full_path)
+                self.lima_process = find_process_by_name(self.lima_exe_full_path)
                 
                 if self.lima_process:
                     self.lima_pid = self.lima_process.pid
@@ -296,7 +292,7 @@ class LimaTestExecutor:
                 return
             
             # Check for crash logs during monitoring
-            crash_info = LimaTestUtils.check_crash_logs(self.lima_install_path)
+            crash_info = check_crash_logs(self.lima_install_path)
             if crash_info.get("exists"):
                 # Compare with baseline - if different, new crash occurred
                 if not self.crash_log_baseline or crash_info.get("contents") != self.crash_log_baseline.get("contents"):
@@ -410,7 +406,7 @@ class LimaTestExecutor:
         
         try:
             # Find LIMA window
-            lima_window = LimaTestUtils.find_window_by_title("LIMA", timeout=5)
+            lima_window = find_window_by_title("LIMA", timeout=5)
             if not lima_window:
                 message = "Could not find LIMA window to test keyboard input"
                 self.add_test_result("Keyboard Input Detection Test", TEST_FAILED, message)
@@ -436,7 +432,7 @@ class LimaTestExecutor:
             # STEP 1: Take BEFORE screenshot
             # ========================================
             print("  [1/4] Taking BEFORE screenshot...")
-            before_screenshot = LimaTestUtils.take_screenshot()
+            before_screenshot = take_screenshot()
             if not before_screenshot:
                 message = "Failed to capture before screenshot"
                 self.add_test_result("Keyboard Input Detection Test", TEST_FAILED, message)
@@ -463,7 +459,7 @@ class LimaTestExecutor:
             # STEP 3: Take AFTER screenshot
             # ========================================
             print("  [3/4] Taking AFTER screenshot...")
-            after_screenshot = LimaTestUtils.take_screenshot()
+            after_screenshot = take_screenshot()
             if not after_screenshot:
                 message = "Failed to capture after screenshot"
                 self.add_test_result("Keyboard Input Detection Test", TEST_FAILED, message)
@@ -478,7 +474,7 @@ class LimaTestExecutor:
             This would indicate that keyboard input was successfully detected and displayed.
             Look for the text in the bottom portion of the LIMA Screen Reader window."""
             
-            verification_result = LimaTestUtils.verify_tool_with_screenshots(
+            verification_result = verify_tool_with_screenshots(
                 before_screenshot=before_screenshot,
                 after_screenshot=after_screenshot,
                 tool_name="keyboard_input_detection",
@@ -553,7 +549,7 @@ class LimaTestExecutor:
                     lima_window = window
                     break
             if not lima_window:
-                lima_window = LimaTestUtils.find_window_by_title("LIMA Screen Reader", timeout=5)
+                lima_window = find_window_by_title("LIMA Screen Reader", timeout=5)
             if not lima_window:
                 message = f"Could not find LIMA Screen Reader window to open {test_name}"
                 self.add_test_result(result_name, TEST_FAILED, message)
@@ -580,7 +576,7 @@ class LimaTestExecutor:
             # STEP 1: Take BEFORE screenshot
             # ========================================
             print("  [1/5] Taking BEFORE screenshot...")
-            before_screenshot = LimaTestUtils.take_screenshot()
+            before_screenshot = take_screenshot()
             if not before_screenshot:
                 print("  ! Could not capture before screenshot")
             else:
@@ -604,7 +600,7 @@ class LimaTestExecutor:
             # STEP 2: Take AFTER screenshot
             # ========================================
             print("  [3/5] Taking AFTER screenshot...")
-            after_screenshot = LimaTestUtils.take_screenshot()
+            after_screenshot = take_screenshot()
             if not after_screenshot:
                 print("  ! Could not capture after screenshot")
             else:
@@ -635,7 +631,7 @@ class LimaTestExecutor:
             # STEP 3: Verify with OpenRouter Gemini
             # ========================================
             print("  [4/5] Verifying with OpenRouter Gemini model...")
-            verification_result = LimaTestUtils.verify_tool_with_screenshots(
+            verification_result = verify_tool_with_screenshots(
                 before_screenshot=before_screenshot,
                 after_screenshot=after_screenshot,
                 tool_name=test_name,
@@ -796,7 +792,7 @@ class LimaTestExecutor:
             # STEP 1: Take BEFORE screenshot (About dialog open)
             # ========================================
             print("  [2/6] Taking BEFORE screenshot (About dialog open)...")
-            before_screenshot = LimaTestUtils.take_screenshot()
+            before_screenshot = take_screenshot()
             if not before_screenshot:
                 print("  ! Could not capture before screenshot")
             else:
@@ -820,7 +816,7 @@ class LimaTestExecutor:
                 # STEP 2: Take AFTER 1 screenshot (Website 1 open)
                 # ========================================
                 print("  [4/6] Taking AFTER 1 screenshot (Website 1 opened)...")
-                after_screenshot_website = LimaTestUtils.take_screenshot()
+                after_screenshot_website = take_screenshot()
                 if not after_screenshot_website:
                     print("  ! Could not capture after screenshot for website 1")
                 else:
@@ -833,7 +829,7 @@ class LimaTestExecutor:
                     Compare the BEFORE screenshot (About dialog) to the AFTER screenshot.
                     Look for a browser window appearing in the AFTER screenshot that was not in the BEFORE screenshot."""
                     
-                    website_result = LimaTestUtils.verify_tool_with_screenshots(
+                    website_result = verify_tool_with_screenshots(
                         before_screenshot=before_screenshot,
                         after_screenshot=after_screenshot_website,
                         tool_name="Website Link Click",
@@ -884,7 +880,7 @@ class LimaTestExecutor:
                 # STEP 3: Take AFTER 2 screenshot (Website 2 open)
                 # ========================================
                 print("  [6/6] Taking AFTER 2 screenshot (Website 2 opened)...")
-                after_screenshot_docs = LimaTestUtils.take_screenshot()
+                after_screenshot_docs = take_screenshot()
                 if not after_screenshot_docs:
                     print("  ! Could not capture after screenshot for website 2")
                 else:
@@ -897,7 +893,7 @@ class LimaTestExecutor:
                     Compare the BEFORE screenshot (About dialog) to the AFTER screenshot.
                     Look for a browser window appearing in the AFTER screenshot that was not in the BEFORE screenshot."""
                     
-                    docs_result = LimaTestUtils.verify_tool_with_screenshots(
+                    docs_result = verify_tool_with_screenshots(
                         before_screenshot=before_screenshot,
                         after_screenshot=after_screenshot_docs,
                         tool_name="Documentation Link Click",
@@ -965,7 +961,7 @@ class LimaTestExecutor:
         # Give filesystem time to flush
         time.sleep(1)
         
-        crash_info = LimaTestUtils.check_crash_logs(self.lima_install_path)
+        crash_info = check_crash_logs(self.lima_install_path)
         
         if crash_info.get("exists"):
             # Check if this is a new crash log
@@ -1100,7 +1096,7 @@ class LimaTestExecutor:
                 before_screenshot = None
                 if verification_type != "no_verification":
                     print("  [1/4] Taking BEFORE screenshot...")
-                    before_screenshot = LimaTestUtils.take_screenshot()
+                    before_screenshot = take_screenshot()
                     if not before_screenshot:
                         print("  ! Could not capture before screenshot")
                     else:
@@ -1137,7 +1133,7 @@ class LimaTestExecutor:
                 after_screenshot = None
                 if verification_type != "no_verification":
                     print("  [4/4] Taking AFTER screenshot...")
-                    after_screenshot = LimaTestUtils.take_screenshot()
+                    after_screenshot = take_screenshot()
                     if not after_screenshot:
                         print("  ! Could not capture after screenshot")
                     else:
@@ -1145,7 +1141,7 @@ class LimaTestExecutor:
                 elif verification_type == "content_verification":
                     # For weather and long content, take screenshot after response
                     print("  [4/4] Taking AFTER screenshot (after LIMA response)...")
-                    after_screenshot = LimaTestUtils.take_screenshot()
+                    after_screenshot = take_screenshot()
                     if not after_screenshot:
                         print("  ! Could not capture after screenshot")
                     else:
@@ -1155,7 +1151,7 @@ class LimaTestExecutor:
                 verification_result = None
                 if verification_type != "no_verification" and before_screenshot and after_screenshot:
                     print("  [5/5] Verifying with OpenRouter Gemini model...")
-                    verification_result = LimaTestUtils.verify_tool_with_screenshots(
+                    verification_result = verify_tool_with_screenshots(
                         before_screenshot=before_screenshot,
                         after_screenshot=after_screenshot,
                         tool_name=test_name,
@@ -1244,7 +1240,7 @@ class LimaTestExecutor:
                 time.sleep(2.0)
 
                 # Step 2: Find Notepad window and type text
-                notepad_window = LimaTestUtils.find_window_by_title("Notepad", timeout=5)
+                notepad_window = find_window_by_title("Notepad", timeout=5)
                 if not notepad_window:
                     print("  X Could not find Notepad window")
                     self.add_test_result("AI Tool Test: Press Backspace", TEST_FAILED, "Could not open Notepad for backspace test")
@@ -1274,7 +1270,7 @@ class LimaTestExecutor:
 
                 # Step 3: Take BEFORE screenshot of Notepad
                 print("3. Taking BEFORE screenshot of Notepad...")
-                before_screenshot = LimaTestUtils.take_screenshot()
+                before_screenshot = take_screenshot()
                 if not before_screenshot:
                     print("  ! Could not capture before screenshot")
                 else:
@@ -1309,7 +1305,7 @@ class LimaTestExecutor:
                         print(f"  X {message}")
                         return
 
-                after_screenshot = LimaTestUtils.take_screenshot()
+                after_screenshot = take_screenshot()
                 if not after_screenshot:
                     print("  ! Could not capture after screenshot")
                 else:
@@ -1319,7 +1315,7 @@ class LimaTestExecutor:
                 if before_screenshot and after_screenshot:
                     print("7. Verifying with OpenRouter Gemini model...")
                     verification_prompt = "Did text get deleted in the Notepad window? Look for fewer characters in the text content."
-                    verification_result = LimaTestUtils.verify_tool_with_screenshots(
+                    verification_result = verify_tool_with_screenshots(
                         before_screenshot=before_screenshot,
                         after_screenshot=after_screenshot,
                         tool_name="BACKSPACE 5 TIMES",
@@ -1365,7 +1361,7 @@ class LimaTestExecutor:
                 time.sleep(2.0)
 
                 # Step 2: Find Notepad window and type text
-                notepad_window = LimaTestUtils.find_window_by_title("Notepad", timeout=5)
+                notepad_window = find_window_by_title("Notepad", timeout=5)
                 if not notepad_window:
                     print("  X Could not find Notepad window")
                     self.add_test_result("AI Tool Test: Arrow Key Left", TEST_FAILED, "Could not open Notepad for arrow key test")
@@ -1387,7 +1383,7 @@ class LimaTestExecutor:
 
                 # Step 3: Take BEFORE screenshot of Notepad
                 print("3. Taking BEFORE screenshot of Notepad...")
-                before_screenshot = LimaTestUtils.take_screenshot()
+                before_screenshot = take_screenshot()
                 if not before_screenshot:
                     print("  ! Could not capture before screenshot")
                 else:
@@ -1421,7 +1417,7 @@ class LimaTestExecutor:
                         print(f"  X {message}")
                         return
 
-                after_screenshot = LimaTestUtils.take_screenshot()
+                after_screenshot = take_screenshot()
                 if not after_screenshot:
                     print("  ! Could not capture after screenshot")
                 else:
@@ -1431,7 +1427,7 @@ class LimaTestExecutor:
                 if before_screenshot and after_screenshot:
                     print("7. Verifying with OpenRouter Gemini model...")
                     verification_prompt = "Did the text cursor move left in the Notepad text field? Look for cursor position changes in the text."
-                    verification_result = LimaTestUtils.verify_tool_with_screenshots(
+                    verification_result = verify_tool_with_screenshots(
                         before_screenshot=before_screenshot,
                         after_screenshot=after_screenshot,
                         tool_name="ARROW LEFT",
