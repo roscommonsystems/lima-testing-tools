@@ -5,6 +5,7 @@ lima_config.json
 
 # Planning documents (internal)
 plans/
+CLAUDE.md
 
 # Python
 __pycache__/
