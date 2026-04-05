@@ -102,7 +102,7 @@ def run_all_tool_tests(executor):
             time.sleep(SLEEP_C)
 
             # Step 9: Wait for AI execution
-            wait_time = 20
+            wait_time = 30
             print(f"  Waiting for AI to process ({wait_time} seconds)...")
 
             for sec in range(wait_time):
