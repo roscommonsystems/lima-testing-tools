@@ -54,14 +54,30 @@ def speak_tts(text):
     threading.Thread(target=_run, daemon=True).start()
 
 
-def type_into_lima(text):
+def type_into_lima(text, max_tabs=10):
     """
-    Type text into LIMA's text input using pywinauto WM_CHAR delivery.
-    Falls back to pyautogui if pywinauto raises.
+    Type text into LIMA's text input. Uses UI automation to check which
+    element currently has focus — if it is not a text input (Edit control),
+    presses Tab and re-checks until it finds one, up to max_tabs times.
     """
+    from pywinauto import Desktop
+
+    desktop = Desktop(backend="uia")
+
+    # Tab until the focused element is a text input (Edit control)
+    for attempt in range(max_tabs):
+        try:
+            focused = desktop.focused_element()
+            if focused.friendly_class_name() == "Edit":
+                break
+        except Exception:
+            pass
+        print(f"  ! Focused element is not text input (attempt {attempt + 1}/{max_tabs}), tabbing...")
+        pyautogui.press('tab')
+        time.sleep(0.3)
+
+    # Type into whichever Edit control now has focus
     try:
-        from pywinauto import Desktop
-        desktop = Desktop(backend="uia")
         lima_app = desktop.window(title_re=".*LIMA Screen Reader.*")
         edit = lima_app.child_window(control_type="Edit")
         edit.set_focus()
