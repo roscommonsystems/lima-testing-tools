@@ -61,14 +61,38 @@ def type_into_lima(text, max_tabs=10):
     presses Tab and re-checks until it finds one, up to max_tabs times.
     """
     from pywinauto import Desktop
+    from pywinauto.uia_defines import IUIA
+    from pywinauto.windows.uia_element_info import UIAElementInfo
+    from pywinauto.controls.uia_controls import UIAWrapper
 
     desktop = Desktop(backend="uia")
+
+    def get_focused_element():
+        """
+        Get the currently focused UI element using UIA Automation interface.
+        Returns the focused element wrapper or None if not found.
+        """
+        try:
+            # Use the IUIA singleton to get the focused element
+            iuia = IUIA()
+            focused_elem = iuia.get_focused_element()
+            if focused_elem:
+                # Create UIAElementInfo from the focused element
+                elem_info = UIAElementInfo(focused_elem)
+                # Get the wrapper for this element
+                return UIAWrapper(elem_info)
+        except Exception as e:
+            print(f"  ! Debug: get_focused_element error: {e}")
+        return None
 
     def is_text_input(element):
         """
         Check if the element is a text input using multiple fallback methods.
         Returns True if the element is an Edit control, False otherwise.
         """
+        if element is None:
+            return False
+
         try:
             # Method 1: Check control_type() which returns the UIA control type
             control_type = element.control_type()
@@ -83,7 +107,15 @@ def type_into_lima(text, max_tabs=10):
                 if friendly_class == "Edit":
                     return True
 
-            # Method 3: Check element_info.control_type which may have the localized name
+            # Method 3: Check window_class which may have the class name
+            try:
+                window_class = element.window_class()
+                if window_class and "edit" in window_class.lower():
+                    return True
+            except Exception:
+                pass
+
+            # Method 4: Check element_info.control_type which may have the localized name
             try:
                 element_info_control_type = element.element_info.control_type
                 if element_info_control_type:
@@ -92,33 +124,37 @@ def type_into_lima(text, max_tabs=10):
             except Exception:
                 pass
 
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"  ! Debug: is_text_input error: {e}")
         return False
 
     # Tab until the focused element is a text input (Edit control)
     for attempt in range(max_tabs):
-        try:
-            focused = desktop.focused_element()
-            if is_text_input(focused):
-                # Log what was detected for debugging purposes
-                try:
-                    control_type = focused.control_type()
-                    friendly_class = focused.friendly_class_name()
-                    print(f"  OK Found text input: control_type={control_type}, friendly_class={friendly_class}")
-                except Exception:
-                    pass
-                break
-            else:
-                # Log what was found instead for debugging
-                try:
-                    control_type = focused.control_type()
-                    friendly_class = focused.friendly_class_name()
-                    print(f"  ! Focused element is not text input (attempt {attempt + 1}/{max_tabs}): control_type={control_type}, friendly_class={friendly_class}, tabbing...")
-                except Exception:
-                    print(f"  ! Focused element is not text input (attempt {attempt + 1}/{max_tabs}), tabbing...")
-        except Exception as error:
-            print(f"  ! Error checking focused element (attempt {attempt + 1}/{max_tabs}): {error}, tabbing...")
+        focused = get_focused_element()
+
+        if focused is None:
+            print(f"  ! Could not get focused element (attempt {attempt + 1}/{max_tabs}), tabbing...")
+        elif is_text_input(focused):
+            # Log what was detected for debugging purposes
+            try:
+                control_type = focused.control_type()
+                friendly_class = focused.friendly_class_name()
+                window_class = focused.window_class() if hasattr(focused, 'window_class') else 'N/A'
+                print(f"  OK Found text input: control_type={control_type}, friendly_class={friendly_class}, window_class={window_class}")
+            except Exception as e:
+                print(f"  OK Found text input (details unavailable: {e})")
+            break
+        else:
+            # Log what was found instead for debugging
+            try:
+                control_type = focused.control_type()
+                friendly_class = focused.friendly_class_name()
+                window_class = focused.window_class() if hasattr(focused, 'window_class') else 'N/A'
+                name = focused.window_text() if hasattr(focused, 'window_text') else 'N/A'
+                print(f"  ! Focused element is not text input (attempt {attempt + 1}/{max_tabs}): control_type={control_type}, friendly_class={friendly_class}, window_class={window_class}, name='{name}', tabbing...")
+            except Exception as e:
+                print(f"  ! Focused element is not text input (attempt {attempt + 1}/{max_tabs}): error getting details: {e}, tabbing...")
+
         pyautogui.press('tab')
         time.sleep(0.3)
 
@@ -130,7 +166,8 @@ def type_into_lima(text, max_tabs=10):
         edit.click_input()
         time.sleep(0.2)
         edit.type_keys(text, with_spaces=True)
-    except Exception:
+    except Exception as e:
+        print(f"  ! Could not use pywinauto to type, falling back to pyautogui.write: {e}")
         pyautogui.write(text, interval=0.15)
 
 
