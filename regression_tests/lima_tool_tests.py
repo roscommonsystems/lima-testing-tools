@@ -26,9 +26,9 @@ def run_all_tool_tests(executor):
         ("TYPE TEXT", "Type hello", "AI Tool Test: Type Text", "text_input", "Does the AFTER screenshot show the text 'hello' appearing in a text input field?"),
         ("WEATHER", "whats the weather in japan", "AI Tool Test: Weather Retrieval", "content_verification", "Did LIMA display a weather response or information about Japan's weather? Look for any new text content or weather-related information in the LIMA interface."),
         ("MOUSE CLICK", "do a right click", "AI Tool Test: Mouse Click", "context_menu", "Does the AFTER screenshot show a context menu appearing at the mouse cursor position?"),
-        ("MOUSE CLICK COORDINATES", "right click at coordinates x 800 y 400", "AI Tool Test: Mouse Click Coordinates", "content_verification", "Does LIMA's chat log in the AFTER screenshot show that it successfully executed a right click at coordinates (800, 400)? Look for the assistant response text mentioning the click action."),
+        ("MOUSE CLICK COORDINATES", "click on the file menu", "AI Tool Test: Mouse Click Coordinates", "content_verification", "Did a File menu dropdown or menu bar open in the AFTER screenshot? Look for a dropdown menu appearing, or LIMA's response confirming it clicked the File menu."),
         ("MOVE MOUSE TO", "move the mouse to position x 300 y 300", "AI Tool Test: Move Mouse To", "no_verification", "No visual verification — position is checked programmatically."),
-        ("MOUSE WHEEL SCROLL", "scroll down", "AI Tool Test: Mouse Wheel Scroll", "scroll_position", "Did the Amazon webpage scroll down between the before and after screenshots? Look for different content being visible — new products, sections, or the page shifted downward."),
+        ("MOUSE WHEEL SCROLL", "scroll down", "AI Tool Test: Mouse Wheel Scroll", "scroll_position", "Did the Google News webpage scroll down between the before and after screenshots? Look for different news articles or content being visible, or the page shifted downward."),
         ("CHANGE VOLUME", "increase the volume", "AI Tool Test: Change Volume", "no_verification", "No visual verification required for volume change"),
         ("WINDOWS KEY", "press the windows key", "AI Tool Test: Windows Key", "start_menu", "Did the Start menu or search window appear on screen?"),
         ("SHOW DESKTOP", "show the desktop", "AI Tool Test: Show Desktop", "desktop", "Are all application windows minimized and the desktop visible?"),
@@ -87,13 +87,13 @@ def run_all_tool_tests(executor):
                 pyautogui.hotkey('win', 'down')
                 time.sleep(SLEEP_B)
             elif test_name == "MOUSE WHEEL SCROLL":
-                # Open Amazon (reliably scrollable) and wait for it to load
-                webbrowser.open("https://www.amazon.com")
+                # Open Google News (reliably long and scrollable) and wait for it to load
+                webbrowser.open("https://news.google.com")
                 time.sleep(SLEEP_D)
-                amazon_window = find_window_by_title("Amazon", timeout=15)
-                if amazon_window:
+                news_window = find_window_by_title("Google News", timeout=15)
+                if news_window:
                     try:
-                        amazon_window.activate()
+                        news_window.activate()
                     except Exception:
                         pass
                     time.sleep(SLEEP_B)
@@ -117,6 +117,17 @@ def run_all_tool_tests(executor):
             # Step 8: Submit
             print("  Pressing Enter to submit...")
             pyautogui.press('enter')
+
+            # Special: immediately focus Google News after submit so LIMA scrolls it, not itself
+            if test_name == "MOUSE WHEEL SCROLL":
+                news_window = find_window_by_title("Google News", timeout=5)
+                if news_window:
+                    try:
+                        news_window.activate()
+                    except Exception:
+                        pass
+                    time.sleep(SLEEP_A)
+
             time.sleep(SLEEP_C)
 
             # Step 9: Wait for AI execution
@@ -150,12 +161,12 @@ def run_all_tool_tests(executor):
                 time.sleep(SLEEP_C)
                 continue
 
-            # Special: MOUSE WHEEL SCROLL — switch back to Amazon to capture the after state
+            # Special: MOUSE WHEEL SCROLL — switch back to Google News to capture the after state
             if test_name == "MOUSE WHEEL SCROLL":
-                amazon_window = find_window_by_title("Amazon", timeout=5)
-                if amazon_window:
+                news_window = find_window_by_title("Google News", timeout=5)
+                if news_window:
                     try:
-                        amazon_window.activate()
+                        news_window.activate()
                     except Exception:
                         pass
                     time.sleep(SLEEP_B)
@@ -335,7 +346,10 @@ def run_all_tool_tests(executor):
 
             # Step 6: Switch back to Notepad and take AFTER screenshot
             print("6. Switching back to Notepad and taking AFTER screenshot...")
-            notepad_window.activate()
+            try:
+                notepad_window.activate()
+            except Exception:
+                pass
             time.sleep(SLEEP_A)
 
             after_screenshot = take_screenshot()
@@ -454,7 +468,10 @@ def run_all_tool_tests(executor):
 
             # Step 6: Switch back to Notepad and take AFTER screenshot
             print("6. Switching back to Notepad and taking AFTER screenshot...")
-            notepad_window.activate()
+            try:
+                notepad_window.activate()
+            except Exception:
+                pass
             time.sleep(SLEEP_A)
 
             after_screenshot = take_screenshot()
