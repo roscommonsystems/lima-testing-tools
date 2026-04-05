@@ -3,6 +3,7 @@ LIMA Test Executor Module
 Handles test execution, LIMA process lifecycle management, and test coordination.
 """
 
+import ctypes
 import os
 import sys
 import time
@@ -41,9 +42,18 @@ class LimaTestExecutor:
         self.reporter.add_error(error_message)
     
     # ========================================
+    # Helpers
+    # ========================================
+
+    def _msgbox(self, title, message, error=False):
+        """Show a Windows message box. MB_ICONERROR=0x10, MB_ICONINFORMATION=0x40."""
+        icon = 0x10 if error else 0x40
+        ctypes.windll.user32.MessageBoxW(0, message, title, icon)
+
+    # ========================================
     # Main Test Runner
     # ========================================
-    
+
     def run_tests(self):
         """
         Run the complete regression test suite.
@@ -55,6 +65,10 @@ class LimaTestExecutor:
             # Minimize all other windows first for clean environment
             minimize_all_other_windows()
 
+            # Center the mouse on startup for consistent test positioning
+            screen_width, screen_height = pyautogui.size()
+            pyautogui.moveTo(screen_width // 2, screen_height // 2)
+
             # Note: print() is used intentionally throughout this module instead of the logging
             # module. These tests are run via .bat scripts where stdout is the primary output channel.
 
@@ -64,12 +78,14 @@ class LimaTestExecutor:
                 print("ERROR: OPEN_ROUTER_API_KEY could not be retrieved. Aborting test run.")
                 print("  Hint: Make sure lima_config.json is properly configured with a valid license key.")
                 self.reporter.finalize_results()
+                self._msgbox("LIMA Tests Aborted", "Could not retrieve API key.\n\nCheck lima_config.json has a valid license key.", error=True)
                 return False
             print("  OK API key verified\n")
 
             # Test 1: Find LIMA executable first
             if not self._test_lima_discovery():
                 self.reporter.finalize_results()
+                self._msgbox("LIMA Tests Aborted", "LIMA executable not found.\n\nCheck that LIMA Screen Reader is installed.", error=True)
                 return False
 
             # Test 2: Check for pre-existing crash logs
@@ -82,6 +98,7 @@ class LimaTestExecutor:
             # Test 4: Launch LIMA
             if not self._test_lima_launch():
                 self.reporter.finalize_results()
+                self._msgbox("LIMA Tests Aborted", "LIMA failed to launch.", error=True)
                 return False
             
             # Test 5: License validation on startup
@@ -111,6 +128,7 @@ class LimaTestExecutor:
             # Test 12: Re-launch LIMA for subscription test
             if not self._test_lima_launch():
                 self.reporter.finalize_results()
+                self._msgbox("LIMA Tests Aborted", "LIMA failed to re-launch for subscription test.", error=True)
                 return False
             
             time.sleep(2)
@@ -132,6 +150,7 @@ class LimaTestExecutor:
             if not self._test_lima_launch():
                 print("X Could not launch LIMA for tool tests")
                 self.reporter.finalize_results()
+                self._msgbox("LIMA Tests Aborted", "LIMA failed to launch for tool tests.", error=True)
                 return False
             time.sleep(5)
 
@@ -154,9 +173,18 @@ class LimaTestExecutor:
             error_msg = f"Unexpected error during test execution: {str(error)}"
             self.add_test_result("Test Execution", TEST_FAILED, error_msg)
             self.add_error(error_msg)
-        
+            self._msgbox("LIMA Tests Crashed", f"Unexpected error:\n\n{error}", error=True)
+
         self.reporter.finalize_results()
-        return self.reporter.get_overall_status() == TEST_PASSED
+        passed = self.reporter.get_overall_status() == TEST_PASSED
+        tests = self.reporter.test_results["tests"]
+        total = len(tests)
+        failures = sum(1 for t in tests if t.get("status") == TEST_FAILED)
+        if passed:
+            self._msgbox("LIMA Tests Complete", f"All {total} tests passed.")
+        else:
+            self._msgbox("LIMA Tests Complete", f"{failures} of {total} tests failed.\n\nCheck test_results.json for details.", error=True)
+        return passed
     
     # ========================================
     # Individual Test Methods
