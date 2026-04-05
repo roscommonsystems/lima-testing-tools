@@ -65,6 +65,7 @@ def type_into_lima(text):
         lima_app = desktop.window(title_re=".*LIMA Screen Reader.*")
         edit = lima_app.child_window(control_type="Edit")
         edit.set_focus()
+        edit.click_input()
         time.sleep(0.2)
         edit.type_keys(text, with_spaces=True)
     except Exception:
