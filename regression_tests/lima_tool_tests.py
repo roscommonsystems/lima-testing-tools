@@ -43,7 +43,7 @@ def run_all_tool_tests(executor):
 
         try:
             # Step 1: Ensure LIMA is focused (always maximize)
-            if not executor._refocus_lima(timeout=10):
+            if not executor.process_manager.refocus(timeout=10):
                 message = "Could not refocus on LIMA window"
                 executor.add_test_result(result_name, TEST_FAILED, message)
                 print(f"  X {message}")
@@ -90,7 +90,7 @@ def run_all_tool_tests(executor):
             for i in range(wait_time):
                 time.sleep(1)
 
-                if not executor._is_lima_running():
+                if not executor.process_manager.is_running():
                     message = f"LIMA crashed during {test_name}"
                     executor.add_test_result(result_name, TEST_FAILED, message)
                     print(f"  X {message}")
@@ -142,7 +142,7 @@ def run_all_tool_tests(executor):
                     pyautogui.keyUp(key)
 
             # Step 12: Record result
-            if executor._is_lima_running():
+            if executor.process_manager.is_running():
                 if verification_type == "no_verification":
                     # For tools that don't require visual verification
                     executor.add_test_result(
@@ -248,7 +248,7 @@ def run_all_tool_tests(executor):
 
             # Step 4: Switch to LIMA and type backspace command
             print("4. Switching to LIMA and executing backspace command...")
-            if not executor._refocus_lima(timeout=10):
+            if not executor.process_manager.refocus(timeout=10):
                 print("  X Could not refocus on LIMA window")
                 executor.add_test_result("AI Tool Test: Press Backspace", TEST_FAILED, "Could not refocus on LIMA")
                 return
@@ -269,7 +269,7 @@ def run_all_tool_tests(executor):
             print(f"5. Waiting for AI to process ({wait_time} seconds)...")
             for i in range(wait_time):
                 time.sleep(1)
-                if not executor._is_lima_running():
+                if not executor.process_manager.is_running():
                     message = "LIMA crashed during backspace test"
                     executor.add_test_result("AI Tool Test: Press Backspace", TEST_FAILED, message)
                     print(f"  X {message}")
@@ -361,7 +361,7 @@ def run_all_tool_tests(executor):
 
             # Step 4: Switch to LIMA and type arrow left command
             print("4. Switching to LIMA and executing arrow left command...")
-            if not executor._refocus_lima(timeout=10):
+            if not executor.process_manager.refocus(timeout=10):
                 print("  X Could not refocus on LIMA window")
                 executor.add_test_result("AI Tool Test: Arrow Key Left", TEST_FAILED, "Could not refocus on LIMA")
                 return
@@ -381,7 +381,7 @@ def run_all_tool_tests(executor):
             print(f"5. Waiting for AI to process ({wait_time} seconds)...")
             for i in range(wait_time):
                 time.sleep(1)
-                if not executor._is_lima_running():
+                if not executor.process_manager.is_running():
                     message = "LIMA crashed during arrow left test"
                     executor.add_test_result("AI Tool Test: Arrow Key Left", TEST_FAILED, message)
                     print(f"  X {message}")

@@ -8,10 +8,10 @@ import sys
 import time
 import pyautogui
 import pygetwindow as gw
-import psutil
 
 from lima_test_utils import *
 from lima_test_reporter import LimaTestReporter
+from lima_process_manager import LimaProcessManager
 from lima_tool_tests import run_all_tool_tests
 
 
@@ -19,13 +19,9 @@ class LimaTestExecutor:
     """Handles execution of LIMA regression tests."""
     
     def __init__(self):
-        """Initialize the test executor with reporter and process references."""
+        """Initialize the test executor with reporter and process manager."""
         self.reporter = LimaTestReporter()
-        self.lima_process = None
-        self.lima_pid = None
-        self.lima_install_path = None
-        self.lima_exe_full_path = None
-        self.crash_log_baseline = None
+        self.process_manager = LimaProcessManager()
     
     # ========================================
     # Property Delegates to Reporter
@@ -43,43 +39,6 @@ class LimaTestExecutor:
     def add_error(self, error_message):
         """Add an error via reporter."""
         self.reporter.add_error(error_message)
-    
-    # ========================================
-    # Process Management Methods
-    # ========================================
-    
-    def _is_lima_running(self):
-        """
-        Check if LIMA process is still running.
-        
-        Returns:
-            bool: True if running, False otherwise
-        """
-        if self.lima_process:
-            try:
-                return self.lima_process.is_running()
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                return False
-        return False
-    
-    def _close_lima(self):
-        """Close LIMA application gracefully."""
-        if self.lima_process and self._is_lima_running():
-            try:
-                self.lima_process.terminate()
-                # Wait up to 5 seconds for graceful termination
-                try:
-                    self.lima_process.wait(timeout=5)
-                except psutil.TimeoutExpired:
-                    # Force kill if graceful termination didn't work
-                    self.lima_process.kill()
-            except Exception as error:
-                # Log but don't fail test for close errors
-                error_msg = f"Note: Issue closing LIMA: {str(error)}"
-                self.add_error(error_msg)
-        
-        self.lima_process = None
-        self.lima_pid = None
     
     # ========================================
     # Main Test Runner
@@ -144,7 +103,9 @@ class LimaTestExecutor:
             self._test_about_dialog_links()
             
             # Test 11: Close LIMA and reopen for next test
-            self._close_lima()
+            close_error = self.process_manager.close()
+            if close_error:
+                self.add_error(close_error)
             time.sleep(2)
             
             # Test 12: Re-launch LIMA for subscription test
@@ -158,7 +119,9 @@ class LimaTestExecutor:
             self._test_subscription_dialog()
             
             # Test 14: Close for tool tests
-            self._close_lima()
+            close_error = self.process_manager.close()
+            if close_error:
+                self.add_error(close_error)
             time.sleep(3)
 
             print("\n" + "="*60)
@@ -178,7 +141,9 @@ class LimaTestExecutor:
             self._test_all_tools()
 
             # Close LIMA after all tool tests
-            self._close_lima()
+            close_error = self.process_manager.close()
+            if close_error:
+                self.add_error(close_error)
             time.sleep(3)
 
             # Test 15: Check for crash logs after run
@@ -204,13 +169,13 @@ class LimaTestExecutor:
         Returns:
             bool: True if executable found, False otherwise
         """
-        self.lima_install_path = None
-        self.lima_exe_full_path = find_lima_executable()
+        self.process_manager.install_path = None
+        self.process_manager.exe_full_path = find_lima_executable()
         
-        if self.lima_exe_full_path:
+        if self.process_manager.exe_full_path:
             # Extract installation directory
-            self.lima_install_path = os.path.dirname(self.lima_exe_full_path)
-            message = f"Found LIMA executable at {self.lima_exe_full_path}"
+            self.process_manager.install_path = os.path.dirname(self.process_manager.exe_full_path)
+            message = f"Found LIMA executable at {self.process_manager.exe_full_path}"
             self.add_test_result("Lima Executable Discovery", TEST_PASSED, message)
             return True
         else:
@@ -221,10 +186,10 @@ class LimaTestExecutor:
     
     def _test_prerun_crash_logs(self):
         """Test: Check for pre-existing crash logs before starting LIMA."""
-        crash_info = check_crash_logs(self.lima_install_path)
+        crash_info = check_crash_logs(self.process_manager.install_path)
         
         if crash_info.get("exists"):
-            self.crash_log_baseline = crash_info
+            self.process_manager.crash_log_baseline = crash_info
             message = "Pre-existing crash log detected (will monitor for new ones)"
             self.add_test_result("Pre-Run Crash Log Check", TEST_PASSED, message)
         else:
@@ -239,27 +204,27 @@ class LimaTestExecutor:
             bool: True if launch successful, False otherwise
         """
         try:
-            if not self.lima_exe_full_path:
+            if not self.process_manager.exe_full_path:
                 raise ValueError("LIMA executable path not found")
             
             # Change to LIMA's installation directory before launching
             # This ensures relative paths work correctly
             original_dir = os.getcwd()
-            os.chdir(self.lima_install_path)
+            os.chdir(self.process_manager.install_path)
             
             try:
                 # Launch LIMA using os.startfile (Windows-specific)
-                os.startfile(self.lima_exe_full_path)
+                os.startfile(self.process_manager.exe_full_path)
                 
                 # Wait for process to start
                 time.sleep(4)
                 
                 # Find the LIMA process
-                self.lima_process = find_process_by_name(self.lima_exe_full_path)
+                self.process_manager.process = find_process_by_name(self.process_manager.exe_full_path)
                 
-                if self.lima_process:
-                    self.lima_pid = self.lima_process.pid
-                    message = f"Lima launched successfully (PID: {self.lima_pid})"
+                if self.process_manager.process:
+                    self.process_manager.pid = self.process_manager.process.pid
+                    message = f"Lima launched successfully (PID: {self.process_manager.pid})"
                     self.add_test_result("Application Launch", TEST_PASSED, message)
                     return True
                 else:
@@ -286,17 +251,17 @@ class LimaTestExecutor:
         
         while time.time() - monitoring_start < monitoring_duration:
             # Check if process is still running
-            if not self._is_lima_running():
+            if not self.process_manager.is_running():
                 message = "Lima process crashed unexpectedly during stability check"
                 self.add_test_result("Stability Check", TEST_FAILED, message)
                 self.add_error("Application crashed during monitoring")
                 return
             
             # Check for crash logs during monitoring
-            crash_info = check_crash_logs(self.lima_install_path)
+            crash_info = check_crash_logs(self.process_manager.install_path)
             if crash_info.get("exists"):
                 # Compare with baseline - if different, new crash occurred
-                if not self.crash_log_baseline or crash_info.get("contents") != self.crash_log_baseline.get("contents"):
+                if not self.process_manager.crash_log_baseline or crash_info.get("contents") != self.process_manager.crash_log_baseline.get("contents"):
                     message = "Crash log created during monitoring phase"
                     self.add_test_result("Stability Check", TEST_FAILED, message)
                     self.reporter.set_crash_log_info(
@@ -316,7 +281,7 @@ class LimaTestExecutor:
         """
         try:
             # If LIMA launched successfully, license validation passed
-            if self.lima_process and self._is_lima_running():
+            if self.process_manager.process and self.process_manager.is_running():
                 message = "License validation completed successfully on startup"
                 self.add_test_result("License Validation on Startup", TEST_PASSED, message)
             else:
@@ -333,16 +298,16 @@ class LimaTestExecutor:
         Test: Verify license key file exists and persists (simulating update scenario).
         """
         try:
-            if not self.lima_install_path:
+            if not self.process_manager.install_path:
                 message = "Cannot test license persistence - install path unknown"
                 self.add_test_result("License Key Persistence Test", TEST_FAILED, message)
                 return
             
             # Check for license file (common names)
             license_paths = [
-                os.path.join(self.lima_install_path, "data", "activation_key.txt"),
-                os.path.join(self.lima_install_path, "data", "license.key"),
-                os.path.join(self.lima_install_path, "data", "license.txt")
+                os.path.join(self.process_manager.install_path, "data", "activation_key.txt"),
+                os.path.join(self.process_manager.install_path, "data", "license.key"),
+                os.path.join(self.process_manager.install_path, "data", "license.txt")
             ]
             
             license_found = False
@@ -370,13 +335,13 @@ class LimaTestExecutor:
         Test: Verify settings file exists and will persist through updates.
         """
         try:
-            if not self.lima_install_path:
+            if not self.process_manager.install_path:
                 message = "Cannot test settings file persistence - install path unknown"
                 self.add_test_result("Settings File Persistence Test", TEST_FAILED, message)
                 return
             
             import json
-            config_path = os.path.join(self.lima_install_path, "data", "config.json")
+            config_path = os.path.join(self.process_manager.install_path, "data", "config.json")
             
             if os.path.exists(config_path):
                 # Verify it's readable
@@ -490,7 +455,7 @@ class LimaTestExecutor:
             time.sleep(1)
             
             # Verify LIMA is still running
-            if not self._is_lima_running():
+            if not self.process_manager.is_running():
                 message = "LIMA process crashed during keyboard input test"
                 self.add_test_result("Keyboard Input Detection Test", TEST_FAILED, message)
                 return
@@ -654,7 +619,7 @@ class LimaTestExecutor:
                 pass
             time.sleep(0.7)
 
-            if not self._is_lima_running():
+            if not self.process_manager.is_running():
                 message = f"LIMA crashed after closing {test_name}"
                 self.add_test_result(result_name, TEST_FAILED, message)
                 self.add_error(f"LIMA crashed after {test_name}")
@@ -939,7 +904,7 @@ class LimaTestExecutor:
                 pass
             
             # Verify LIMA is still running
-            if not self._is_lima_running():
+            if not self.process_manager.is_running():
                 message = "LIMA crashed during About dialog links test"
                 self.add_test_result("About Dialog Links Test", TEST_FAILED, message)
                 return
@@ -962,11 +927,11 @@ class LimaTestExecutor:
         # Give filesystem time to flush
         time.sleep(1)
         
-        crash_info = check_crash_logs(self.lima_install_path)
+        crash_info = check_crash_logs(self.process_manager.install_path)
         
         if crash_info.get("exists"):
             # Check if this is a new crash log
-            if not self.crash_log_baseline or crash_info.get("contents") != self.crash_log_baseline.get("contents"):
+            if not self.process_manager.crash_log_baseline or crash_info.get("contents") != self.process_manager.crash_log_baseline.get("contents"):
                 message = "New crash log detected after test run"
                 self.add_test_result("Post-Run Crash Log Check", TEST_FAILED, message)
                 self.reporter.set_crash_log_info(True, crash_info["path"], crash_info["contents"])
@@ -980,69 +945,6 @@ class LimaTestExecutor:
     # Tool Testing Methods
     # ========================================
     
-    def _refocus_lima(self, timeout=5):
-        """
-        Refocus on LIMA window after a tool action that may have changed focus.
-        
-        Args:
-            timeout (int): Maximum seconds to wait for LIMA window
-            
-        Returns:
-            bool: True if LIMA was found and focused, False otherwise
-        """
-        print("  Refocusing on LIMA...")
-        
-        # Release any stuck modifier keys first
-        for key in ['win', 'ctrl', 'alt', 'shift', 'winleft', 'winright']:
-            pyautogui.keyUp(key)
-        time.sleep(0.3)
-        
-        # Search for LIMA window fresh (don't use cached window objects)
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            try:
-                # Get fresh window list each attempt
-                all_windows = gw.getAllWindows()
-                
-                for window in all_windows:
-                    if "LIMA" in window.title:
-                        try:
-                            # Try to activate - this will fail if handle is invalid
-                            window.restore()
-                            time.sleep(0.3)
-                            window.activate()
-                            time.sleep(0.5)
-                            
-                            # Try to maximize
-                            try:
-                                window.maximize()
-                                time.sleep(0.5)
-                            except Exception:
-                                pass  # Maximize is optional
-                            
-                            # Click the window center to ensure focus
-                            click_x = window.left + (window.width // 2)
-                            click_y = window.top + (window.height // 2)
-                            pyautogui.click(click_x, click_y)
-                            time.sleep(0.5)
-                            
-                            print(f"  OK LIMA refocused: '{window.title}'")
-                            return True
-                            
-                        except Exception as e:
-                            # Handle became invalid, continue searching
-                            print(f"  ! Window handle invalid, retrying...")
-                            time.sleep(0.5)
-                            break  # Break inner loop to refresh window list
-                
-            except Exception as e:
-                print(f"  ! Error getting windows: {str(e)}")
-            
-            time.sleep(0.5)
-        
-        print("  ! Could not find LIMA window after timeout")
-        return False
-
     def _test_all_tools(self):
         """Test: Run all LIMA AI tool tests in a single session with screenshot verification."""
         run_all_tool_tests(self)
