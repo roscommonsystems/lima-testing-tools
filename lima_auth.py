@@ -162,15 +162,13 @@ class LimaAuth:
 
 
 # Convenience function for backward compatibility
-def validate_license(license_key: str = None, max_retries: int = 4) -> Dict[str, Any]:
+def validate_license(max_retries: int = 4) -> Dict[str, Any]:
     """
     Validate license key (convenience function).
     
     Note: This function reads the license key from lima_config.json file.
-    The license_key parameter is ignored and kept for backward compatibility.
     
     Args:
-        license_key: Ignored (reads from config file instead)
         max_retries: Maximum retry attempts
         
     Returns:

@@ -276,12 +276,6 @@ def run_all_tool_tests(executor):
             pyautogui.press('enter')
             time.sleep(SLEEP_C)
 
-            # Step 6: Switch back to Notepad and take AFTER screenshot
-            print("6. Switching back to Notepad and taking AFTER screenshot...")
-            notepad_window.activate()
-            pyautogui.press('escape')
-            time.sleep(SLEEP_A)
-
             # Step 5: Wait for AI execution
             wait_time = 15
             print(f"5. Waiting for AI to process ({wait_time} seconds)...")
@@ -292,6 +286,11 @@ def run_all_tool_tests(executor):
                     executor.add_test_result("AI Tool Test: Press Backspace", TEST_FAILED, message)
                     print(f"  X {message}")
                     return
+
+            # Step 6: Switch back to Notepad and take AFTER screenshot
+            print("6. Switching back to Notepad and taking AFTER screenshot...")
+            notepad_window.activate()
+            time.sleep(SLEEP_A)
 
             after_screenshot = take_screenshot()
             if not after_screenshot:
@@ -390,11 +389,6 @@ def run_all_tool_tests(executor):
             pyautogui.press('enter')
             time.sleep(SLEEP_C)
 
-            # Step 6: Switch back to Notepad and take AFTER screenshot
-            print("6. Switching back to Notepad and taking AFTER screenshot...")
-            notepad_window.activate()
-            time.sleep(SLEEP_A)
-
             # Step 5: Wait for AI execution
             wait_time = 15
             print(f"5. Waiting for AI to process ({wait_time} seconds)...")
@@ -405,6 +399,11 @@ def run_all_tool_tests(executor):
                     executor.add_test_result("AI Tool Test: Arrow Key Left", TEST_FAILED, message)
                     print(f"  X {message}")
                     return
+
+            # Step 6: Switch back to Notepad and take AFTER screenshot
+            print("6. Switching back to Notepad and taking AFTER screenshot...")
+            notepad_window.activate()
+            time.sleep(SLEEP_A)
 
             after_screenshot = take_screenshot()
             if not after_screenshot:

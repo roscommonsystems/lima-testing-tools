@@ -104,19 +104,19 @@ class LimaTestExecutor:
             # Test 5: Monitor stability
             self._test_stability_monitoring()
             
-            # Test 7: Test Settings dialog
+            # Test 6: Test Settings dialog
             self._test_settings_dialog()
             
-            # Test 9: Test About dialog
+            # Test 7: Test About dialog
             self._test_about_dialog()
 
-            # Test 10: Close LIMA and reopen for next test
+            # Test 8: Close LIMA and reopen for next test
             close_error = self.process_manager.close()
             if close_error:
                 self.add_error(close_error)
             time.sleep(SLEEP_B)
             
-            # Test 12: Re-launch LIMA for subscription test
+            # Test 9: Re-launch LIMA for subscription test
             if not self._test_lima_launch():
                 self.reporter.finalize_results()
                 self._msgbox("LIMA Tests Aborted", "LIMA failed to re-launch for subscription test.", error=True)
@@ -124,10 +124,10 @@ class LimaTestExecutor:
             
             time.sleep(SLEEP_B)
             
-            # Test 13: Test Subscription Information dialog
+            # Test 10: Test Subscription Information dialog
             self._test_subscription_dialog()
             
-            # Test 14: Close for tool tests
+            # Test 11: Close for tool tests
             close_error = self.process_manager.close()
             if close_error:
                 self.add_error(close_error)
@@ -144,7 +144,7 @@ class LimaTestExecutor:
                 self.add_error(close_error)
             time.sleep(SLEEP_C)
 
-            # Test 15: Check for crash logs after run
+            # Test 12: Check for crash logs after run
             self._test_postrun_crash_logs()
 
             
