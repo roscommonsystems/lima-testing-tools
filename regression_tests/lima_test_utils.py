@@ -25,6 +25,12 @@ from lima_auth import LimaAuth
 TEST_PASSED = "PASSED"
 TEST_FAILED = "FAILED"
 
+# Sleep tier constants
+SLEEP_A = 1   # Single UI action (key press, click, focus)
+SLEEP_B = 2   # Window state change (activate, maximize, restore)
+SLEEP_C = 10  # App/dialog appear, post-submit, post-launch settle, between-test pause
+SLEEP_D = 20  # LIMA process startup
+
 # Configure pyautogui
 pyautogui.FAILSAFE = False
 

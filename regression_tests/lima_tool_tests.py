@@ -9,7 +9,8 @@ import pyautogui
 from lima_test_utils import (
     take_screenshot, verify_tool_with_screenshots,
     find_window_by_title, TEST_PASSED, TEST_FAILED,
-    speak_tts, type_into_lima
+    speak_tts, type_into_lima,
+    SLEEP_A, SLEEP_B, SLEEP_C
 )
 
 
@@ -47,7 +48,7 @@ def run_all_tool_tests(executor):
         try:
             # Step 1: Close any previous LIMA instance and launch fresh for isolation
             executor.process_manager.close()
-            time.sleep(2)
+            time.sleep(SLEEP_B)
             print("  Launching fresh LIMA...")
             if not executor.process_manager.launch(
                 executor.process_manager.exe_full_path,
@@ -57,7 +58,7 @@ def run_all_tool_tests(executor):
                 executor.add_test_result(result_name, TEST_FAILED, message)
                 print(f"  X {message}")
                 continue
-            time.sleep(3)
+            time.sleep(SLEEP_C)
 
             # Step 2: Ensure LIMA is focused (always maximize)
             if not executor.process_manager.refocus(timeout=10):
@@ -68,12 +69,12 @@ def run_all_tool_tests(executor):
 
             # Step 3: Clear input state
             pyautogui.press('escape')
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
 
             # Step 4: Release modifier keys
             for key in ['win', 'ctrl', 'alt', 'shift', 'winleft', 'winright']:
                 pyautogui.keyUp(key)
-            time.sleep(0.3)
+            time.sleep(SLEEP_A)
 
             # Step 5: Capture mouse BEFORE
             mouse_before = pyautogui.position()
@@ -92,20 +93,20 @@ def run_all_tool_tests(executor):
             # Step 7: Type command directly into LIMA's text input
             print(f"  Executing tool: '{command}'")
             type_into_lima(command)
-            time.sleep(1.0)
+            time.sleep(SLEEP_A)
             print("  OK Command typed")
 
             # Step 8: Submit
             print("  Pressing Enter to submit...")
             pyautogui.press('enter')
-            time.sleep(3.0)
+            time.sleep(SLEEP_C)
 
             # Step 9: Wait for AI execution
             wait_time = 20
             print(f"  Waiting for AI to process ({wait_time} seconds)...")
 
             for i in range(wait_time):
-                time.sleep(1)
+                time.sleep(SLEEP_A)
 
                 if not executor.process_manager.is_running():
                     message = f"LIMA crashed during {test_name}"
@@ -142,11 +143,11 @@ def run_all_tool_tests(executor):
             # Step 11: Cleanup
             if "WINDOWS KEY" in test_name:
                 pyautogui.press('escape')
-                time.sleep(1)
+                time.sleep(SLEEP_A)
 
             elif "SHOW DESKTOP" in test_name:
                 pyautogui.hotkey('win', 'd')
-                time.sleep(1)
+                time.sleep(SLEEP_A)
                 for key in ['win', 'winleft', 'winright']:
                     pyautogui.keyUp(key)
 
@@ -191,7 +192,7 @@ def run_all_tool_tests(executor):
                 )
                 print(f"  X {test_name} test FAILED - LIMA crashed")
 
-            time.sleep(3.0)
+            time.sleep(SLEEP_C)
 
         except Exception as error:
             message = f"Exception during {test_name}: {str(error)}"
@@ -213,11 +214,11 @@ def run_all_tool_tests(executor):
             # Step 1: Open Notepad
             print("1. Opening Notepad...")
             pyautogui.press('win')
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
             pyautogui.write('notepad')
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
             pyautogui.press('enter')
-            time.sleep(2.0)
+            time.sleep(SLEEP_B)
 
             # Step 2: Find Notepad window and type text
             notepad_window = find_window_by_title("Notepad", timeout=5)
@@ -228,25 +229,25 @@ def run_all_tool_tests(executor):
 
             print("2. Typing text in Notepad...")
             notepad_window.activate()
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
             notepad_window.maximize()
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
 
             # NEW: Deselect menu and focus text area
             print("2b. Focusing text input area (deselecting menu)...")
             pyautogui.press('escape')  # Escape from menu focus
-            time.sleep(0.3)
+            time.sleep(SLEEP_A)
 
             test_text = "Hello World Test"
             pyautogui.write(test_text, interval=0.1)
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
             pyautogui.press('escape')
 
             # Click in the middle-lower area of the window to focus text area
             window_center_x = notepad_window.left + (notepad_window.width // 2)
             click_y = notepad_window.top + int(notepad_window.height * 0.5)  # Click in middle
             pyautogui.click(window_center_x, click_y)
-            time.sleep(0.3)
+            time.sleep(SLEEP_A)
 
             # Step 3: Take BEFORE screenshot of Notepad
             print("3. Taking BEFORE screenshot of Notepad...")
@@ -264,21 +265,21 @@ def run_all_tool_tests(executor):
                 return
 
             type_into_lima("press backspace 5 times")
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
             pyautogui.press('enter')
-            time.sleep(3.0)
+            time.sleep(SLEEP_C)
 
             # Step 6: Switch back to Notepad and take AFTER screenshot
             print("6. Switching back to Notepad and taking AFTER screenshot...")
             notepad_window.activate()
             pyautogui.press('escape')
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
 
             # Step 5: Wait for AI execution
             wait_time = 15
             print(f"5. Waiting for AI to process ({wait_time} seconds)...")
             for i in range(wait_time):
-                time.sleep(1)
+                time.sleep(SLEEP_A)
                 if not executor.process_manager.is_running():
                     message = "LIMA crashed during backspace test"
                     executor.add_test_result("AI Tool Test: Press Backspace", TEST_FAILED, message)
@@ -321,7 +322,7 @@ def run_all_tool_tests(executor):
 
             # Close Notepad
             pyautogui.hotkey('alt', 'f4')
-            time.sleep(1.0)
+            time.sleep(SLEEP_A)
 
         except Exception as error:
             message = f"Exception during BACKSPACE test: {str(error)}"
@@ -335,11 +336,11 @@ def run_all_tool_tests(executor):
             # Step 1: Open Notepad again
             print("1. Opening Notepad...")
             pyautogui.press('win')
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
             pyautogui.write('notepad')
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
             pyautogui.press('enter')
-            time.sleep(2.0)
+            time.sleep(SLEEP_B)
 
             # Step 2: Find Notepad window and type text
             notepad_window = find_window_by_title("Notepad", timeout=5)
@@ -350,17 +351,17 @@ def run_all_tool_tests(executor):
 
             print("2. Typing text in Notepad...")
             notepad_window.activate()
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
             notepad_window.maximize()
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
 
             test_text = "Hello World Test"
             pyautogui.write(test_text, interval=0.1)
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
 
             # Move cursor to end of text
             pyautogui.press('end')
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
 
             # Step 3: Take BEFORE screenshot of Notepad
             print("3. Taking BEFORE screenshot of Notepad...")
@@ -378,20 +379,20 @@ def run_all_tool_tests(executor):
                 return
 
             type_into_lima("press arrow key left")
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
             pyautogui.press('enter')
-            time.sleep(3.0)
+            time.sleep(SLEEP_C)
 
             # Step 6: Switch back to Notepad and take AFTER screenshot
             print("6. Switching back to Notepad and taking AFTER screenshot...")
             notepad_window.activate()
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
 
             # Step 5: Wait for AI execution
             wait_time = 15
             print(f"5. Waiting for AI to process ({wait_time} seconds)...")
             for i in range(wait_time):
-                time.sleep(1)
+                time.sleep(SLEEP_A)
                 if not executor.process_manager.is_running():
                     message = "LIMA crashed during arrow left test"
                     executor.add_test_result("AI Tool Test: Arrow Key Left", TEST_FAILED, message)
@@ -434,7 +435,7 @@ def run_all_tool_tests(executor):
 
             # Close Notepad
             pyautogui.hotkey('alt', 'f4')
-            time.sleep(1.0)
+            time.sleep(SLEEP_A)
 
         except Exception as error:
             message = f"Exception during ARROW LEFT test: {str(error)}"

@@ -8,6 +8,7 @@ import time
 import pyautogui
 import pygetwindow as gw
 import psutil
+from lima_test_utils import SLEEP_A, SLEEP_D
 
 
 class LimaProcessManager:
@@ -64,7 +65,7 @@ class LimaProcessManager:
         os.chdir(install_path)
         try:
             os.startfile(exe_path)
-            time.sleep(5)
+            time.sleep(SLEEP_D)
             self.process = find_process_by_name(exe_path)
             if self.process:
                 self.pid = self.process.pid
@@ -84,7 +85,7 @@ class LimaProcessManager:
 
         for key in ['win', 'ctrl', 'alt', 'shift', 'winleft', 'winright']:
             pyautogui.keyUp(key)
-        time.sleep(0.3)
+        time.sleep(SLEEP_A)
 
         start_time = time.time()
         while time.time() - start_time < timeout:
@@ -94,12 +95,12 @@ class LimaProcessManager:
                     if "LIMA" in window.title:
                         try:
                             window.restore()
-                            time.sleep(0.3)
+                            time.sleep(SLEEP_A)
                             window.activate()
-                            time.sleep(0.5)
+                            time.sleep(SLEEP_A)
                             try:
                                 window.maximize()
-                                time.sleep(0.5)
+                                time.sleep(SLEEP_A)
                             except Exception:
                                 pass
                             # Use Windows UI Automation to click the actual text input (Edit control)
@@ -110,22 +111,22 @@ class LimaProcessManager:
                                 edit = lima_app.child_window(control_type="Edit")
                                 edit.set_focus()
                                 edit.click_input()
-                                time.sleep(0.3)
+                                time.sleep(SLEEP_A)
                             except Exception:
                                 # Fallback: click near window bottom if UIA fails
                                 click_x = window.left + (window.width // 2)
                                 click_y = window.top + int(window.height * 0.88)
                                 pyautogui.click(click_x, click_y)
-                                time.sleep(0.3)
+                                time.sleep(SLEEP_A)
                             print(f"  OK LIMA refocused: '{window.title}'")
                             return True
                         except Exception:
                             print(f"  ! Window handle invalid, retrying...")
-                            time.sleep(0.5)
+                            time.sleep(SLEEP_A)
                             break
             except Exception as e:
                 print(f"  ! Error getting windows: {str(e)}")
-            time.sleep(0.5)
+            time.sleep(SLEEP_A)
 
         print("  ! Could not find LIMA window after timeout")
         return False

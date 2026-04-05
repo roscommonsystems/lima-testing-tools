@@ -123,7 +123,7 @@ class LimaTestExecutor:
             close_error = self.process_manager.close()
             if close_error:
                 self.add_error(close_error)
-            time.sleep(2)
+            time.sleep(SLEEP_B)
             
             # Test 12: Re-launch LIMA for subscription test
             if not self._test_lima_launch():
@@ -131,7 +131,7 @@ class LimaTestExecutor:
                 self._msgbox("LIMA Tests Aborted", "LIMA failed to re-launch for subscription test.", error=True)
                 return False
             
-            time.sleep(2)
+            time.sleep(SLEEP_B)
             
             # Test 13: Test Subscription Information dialog
             self._test_subscription_dialog()
@@ -140,7 +140,7 @@ class LimaTestExecutor:
             close_error = self.process_manager.close()
             if close_error:
                 self.add_error(close_error)
-            time.sleep(3)
+            time.sleep(SLEEP_C)
 
             # Run all tool tests — each test relaunches LIMA independently for isolation.
             # Note: test filtering/selection is not supported by design — this is a full
@@ -151,7 +151,7 @@ class LimaTestExecutor:
             close_error = self.process_manager.close()
             if close_error:
                 self.add_error(close_error)
-            time.sleep(3)
+            time.sleep(SLEEP_C)
 
             # Test 15: Check for crash logs after run
             self._test_postrun_crash_logs()
@@ -233,7 +233,7 @@ class LimaTestExecutor:
                 os.startfile(self.process_manager.exe_full_path)
                 
                 # Wait for process to start
-                time.sleep(4)
+                time.sleep(SLEEP_D)
                 
                 # Find the LIMA process
                 self.process_manager.process = find_process_by_name(self.process_manager.exe_full_path)
@@ -397,9 +397,9 @@ class LimaTestExecutor:
             
             # Activate window and maximize for consistent positioning
             lima_window.activate()
-            time.sleep(1.0)
+            time.sleep(SLEEP_A)
             lima_window.maximize()
-            time.sleep(1.0)
+            time.sleep(SLEEP_A)
             
             # Use Windows UI Automation to click the actual text input (Edit control)
             try:
@@ -409,14 +409,14 @@ class LimaTestExecutor:
                 edit = lima_app.child_window(control_type="Edit")
                 edit.set_focus()
                 edit.click_input()
-                time.sleep(0.5)
+                time.sleep(SLEEP_A)
             except Exception:
                 # Fallback: click near window bottom if UIA fails
                 try:
                     click_x = lima_window.left + (lima_window.width // 2)
                     click_y = lima_window.top + int(lima_window.height * 0.88)
                     pyautogui.click(click_x, click_y)
-                    time.sleep(0.5)
+                    time.sleep(SLEEP_A)
                 except Exception:
                     pass
             
@@ -438,7 +438,7 @@ class LimaTestExecutor:
             test_message = "Hello world"
             type_into_lima(test_message)
             
-            time.sleep(1)  # Wait for text to appear
+            time.sleep(SLEEP_A)  # Wait for text to appear
             print(f"  OK Typed: '{test_message}'")
             
             # ========================================
@@ -472,7 +472,7 @@ class LimaTestExecutor:
                 pyautogui.press('backspace')
                 time.sleep(0.02)
             
-            time.sleep(1)
+            time.sleep(SLEEP_A)
             
             # Verify LIMA is still running
             if not self.process_manager.is_running():
@@ -546,16 +546,16 @@ class LimaTestExecutor:
             # Clear any stuck menus, then activate and focus
             try:
                 pyautogui.press('escape')
-                time.sleep(0.3)
+                time.sleep(SLEEP_A)
                 lima_window.activate()
-                time.sleep(1.0)
+                time.sleep(SLEEP_A)
                 lima_window.maximize()
-                time.sleep(1.0)
+                time.sleep(SLEEP_A)
             except Exception:
                 pass
             try:
                 pyautogui.click(lima_window.left + 200, lima_window.top + 200)
-                time.sleep(0.5)
+                time.sleep(SLEEP_A)
             except Exception:
                 pass
 
@@ -573,13 +573,13 @@ class LimaTestExecutor:
             print(f"  Opening {test_name}...")
             try:
                 pyautogui.press('alt')
-                time.sleep(0.5)
+                time.sleep(SLEEP_A)
                 pyautogui.press('enter')
-                time.sleep(1.5)
+                time.sleep(SLEEP_B)
                 for key in menu_nav_keys:
                     pyautogui.press(key)
-                    time.sleep(0.5)
-                time.sleep(2.5)
+                    time.sleep(SLEEP_A)
+                time.sleep(SLEEP_C)
             except Exception:
                 pass
 
@@ -612,7 +612,7 @@ class LimaTestExecutor:
                     break
                 if attempt % 2 == 0:
                     print(f"    Attempt {attempt + 1}/10 - {test_name} not found yet...")
-                time.sleep(0.5)
+                time.sleep(SLEEP_A)
 
             # ========================================
             # STEP 3: Verify with OpenRouter Gemini
@@ -638,7 +638,7 @@ class LimaTestExecutor:
                 pyautogui.press('escape')
             except Exception:
                 pass
-            time.sleep(0.7)
+            time.sleep(SLEEP_A)
 
             if not self.process_manager.is_running():
                 message = f"LIMA crashed after closing {test_name}"
@@ -732,11 +732,11 @@ class LimaTestExecutor:
             # Clear menus and activate
             try:
                 pyautogui.press('escape')
-                time.sleep(0.3)
+                time.sleep(SLEEP_A)
                 lima_window.activate()
-                time.sleep(1.0)
+                time.sleep(SLEEP_A)
                 pyautogui.click(lima_window.left + 200, lima_window.top + 200)
-                time.sleep(0.5)
+                time.sleep(SLEEP_A)
             except Exception:
                 pass
             
@@ -744,15 +744,15 @@ class LimaTestExecutor:
             print("  Opening About dialog to test links...")
             try:
                 pyautogui.press('alt')
-                time.sleep(0.5)
+                time.sleep(SLEEP_A)
                 pyautogui.press('enter')
-                time.sleep(1.5)
+                time.sleep(SLEEP_B)
                 pyautogui.press('down')
-                time.sleep(0.5)
+                time.sleep(SLEEP_A)
                 pyautogui.press('down')
-                time.sleep(0.5)
+                time.sleep(SLEEP_A)
                 pyautogui.press('enter')
-                time.sleep(2.0)
+                time.sleep(SLEEP_B)
             except Exception:
                 pass
             
@@ -766,7 +766,7 @@ class LimaTestExecutor:
                         break
                 if about_window:
                     break
-                time.sleep(0.5)
+                time.sleep(SLEEP_A)
             
             if not about_window:
                 message = "Could not open About dialog for links test"
@@ -794,11 +794,11 @@ class LimaTestExecutor:
             print(f"  Activating Website link via Tab + Enter...")
             try:
                 about_window.activate()
-                time.sleep(0.5)
+                time.sleep(SLEEP_A)
                 pyautogui.press('tab')   # Move focus to first interactive control (website link)
-                time.sleep(0.3)
+                time.sleep(SLEEP_A)
                 pyautogui.press('enter')  # Activate the link
-                time.sleep(3.0)
+                time.sleep(SLEEP_C)
                 
                 # ========================================
                 # STEP 2: Take AFTER 1 screenshot (Website 1 open)
@@ -840,9 +840,9 @@ class LimaTestExecutor:
                         if any(browser in window.title.lower() for browser in ['chrome', 'firefox', 'edge', 'safari']):
                             try:
                                 window.activate()
-                                time.sleep(0.5)
+                                time.sleep(SLEEP_A)
                                 pyautogui.hotkey('ctrl', 'w')
-                                time.sleep(1.0)
+                                time.sleep(SLEEP_A)
                                 break
                             except Exception:
                                 pass
@@ -858,11 +858,11 @@ class LimaTestExecutor:
             print(f"  Activating Documentation link via Tab + Enter...")
             try:
                 about_window.activate()
-                time.sleep(0.5)
+                time.sleep(SLEEP_A)
                 pyautogui.press('tab')   # Move focus to next interactive control (docs link)
-                time.sleep(0.3)
+                time.sleep(SLEEP_A)
                 pyautogui.press('enter')  # Activate the link
-                time.sleep(3.0)
+                time.sleep(SLEEP_C)
                 
                 # ========================================
                 # STEP 3: Take AFTER 2 screenshot (Website 2 open)
@@ -904,9 +904,9 @@ class LimaTestExecutor:
                         if any(browser in window.title.lower() for browser in ['chrome', 'firefox', 'edge', 'safari']):
                             try:
                                 window.activate()
-                                time.sleep(0.5)
+                                time.sleep(SLEEP_A)
                                 pyautogui.hotkey('ctrl', 'w')
-                                time.sleep(1.0)
+                                time.sleep(SLEEP_A)
                                 break
                             except Exception:
                                 pass
@@ -919,9 +919,9 @@ class LimaTestExecutor:
             # Close About dialog
             try:
                 about_window.activate()
-                time.sleep(0.3)
+                time.sleep(SLEEP_A)
                 pyautogui.press('escape')
-                time.sleep(0.7)
+                time.sleep(SLEEP_A)
             except Exception:
                 pass
             
@@ -947,7 +947,7 @@ class LimaTestExecutor:
     def _test_postrun_crash_logs(self):
         """Test: Check for crash logs created during test run."""
         # Give filesystem time to flush
-        time.sleep(1)
+        time.sleep(SLEEP_A)
         
         crash_info = check_crash_logs(self.process_manager.install_path)
         
