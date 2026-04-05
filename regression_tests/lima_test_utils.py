@@ -37,6 +37,7 @@ pyautogui.FAILSAFE = False
 
 # Configure logging for regression tests
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # Storage for API keys retrieved during license validation
 _api_keys = {}
@@ -601,7 +602,6 @@ def verify_tool_with_screenshots(before_screenshot, after_screenshot, tool_name,
 
         # Parse the response
         response_text = response.choices[0].message.content
-        print(f"Raw API response: {response_text}")
 
         # Parse JSON response
         result = json.loads(response_text)
