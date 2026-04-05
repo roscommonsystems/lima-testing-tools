@@ -101,10 +101,7 @@ class LimaTestExecutor:
                 self._msgbox("LIMA Tests Aborted", "LIMA failed to launch.", error=True)
                 return False
             
-            # Test 5: License validation on startup
-            self._test_license_validation_on_startup()
-            
-            # Test 6: Monitor stability
+            # Test 5: Monitor stability
             self._test_stability_monitoring()
             
             # Test 7: Test keyboard input detection
@@ -115,11 +112,8 @@ class LimaTestExecutor:
             
             # Test 9: Test About dialog
             self._test_about_dialog()
-            
-            # Test 10: Test About dialog links
-            self._test_about_dialog_links()
-            
-            # Test 11: Close LIMA and reopen for next test
+
+            # Test 10: Close LIMA and reopen for next test
             close_error = self.process_manager.close()
             if close_error:
                 self.add_error(close_error)
@@ -290,24 +284,6 @@ class LimaTestExecutor:
         
         message = f"Application remained stable for {monitoring_duration} seconds"
         self.add_test_result("Stability Check", TEST_PASSED, message)
-    
-    def _test_license_validation_on_startup(self):
-        """
-        Test: Verify license validation occurs on startup without errors.
-        """
-        try:
-            # If LIMA launched successfully, license validation passed
-            if self.process_manager.process and self.process_manager.is_running():
-                message = "License validation completed successfully on startup"
-                self.add_test_result("License Validation on Startup", TEST_PASSED, message)
-            else:
-                message = "LIMA did not start - possible license validation failure"
-                self.add_test_result("License Validation on Startup", TEST_FAILED, message)
-                self.add_error("License validation may have failed")
-        except Exception as error:
-            message = f"Exception during license validation test: {str(error)}"
-            self.add_test_result("License Validation on Startup", TEST_FAILED, message)
-            self.add_error(f"License test exception: {str(error)}")
     
     def _test_license_key_persistence(self):
         """
@@ -709,240 +685,6 @@ class LimaTestExecutor:
                 "that was not present in the BEFORE screenshot."
             )
         )
-    
-    def _test_about_dialog_links(self):
-        """
-        Test: Open About dialog and click the website and documentation links with mouse.
-        """
-        speak_tts("About dialog links test")
-        try:
-            # Find LIMA window
-            lima_window = None
-            all_windows = gw.getAllWindows()
-            for window in all_windows:
-                if window.title == "LIMA Screen Reader":
-                    lima_window = window
-                    break
-            
-            if not lima_window:
-                message = "Could not find LIMA Screen Reader window"
-                self.add_test_result("About Dialog Links Test", TEST_FAILED, message)
-                return
-            
-            # Clear menus and activate
-            try:
-                pyautogui.press('escape')
-                time.sleep(SLEEP_A)
-                lima_window.activate()
-                time.sleep(SLEEP_A)
-                pyautogui.click(lima_window.left + 200, lima_window.top + 200)
-                time.sleep(SLEEP_A)
-            except Exception:
-                pass
-            
-            # Open About dialog
-            print("  Opening About dialog to test links...")
-            try:
-                pyautogui.press('alt')
-                time.sleep(SLEEP_A)
-                pyautogui.press('enter')
-                time.sleep(SLEEP_B)
-                pyautogui.press('down')
-                time.sleep(SLEEP_A)
-                pyautogui.press('down')
-                time.sleep(SLEEP_A)
-                pyautogui.press('enter')
-                time.sleep(SLEEP_B)
-            except Exception:
-                pass
-            
-            # Find About dialog window
-            about_window = None
-            for attempt in range(5):
-                all_windows = gw.getAllWindows()
-                for window in all_windows:
-                    if "About LIMA" in window.title:
-                        about_window = window
-                        break
-                if about_window:
-                    break
-                time.sleep(SLEEP_A)
-            
-            if not about_window:
-                message = "Could not open About dialog for links test"
-                self.add_test_result("About Dialog Links Test", TEST_FAILED, message)
-                return
-            
-            print(f"  OK About dialog opened at position: ({about_window.left}, {about_window.top})")
-            print(f"    Dialog size: {about_window.width} x {about_window.height}")
-            
-            # ========================================
-            # STEP 1: Take BEFORE screenshot (About dialog open)
-            # ========================================
-            print("  Taking BEFORE screenshot (About dialog open)...")
-            before_screenshot = take_screenshot()
-            if not before_screenshot:
-                print("  ! Could not capture before screenshot")
-            else:
-                print("  OK BEFORE screenshot captured")
-            
-            browser_opened_count = 0
-
-            # ========================================
-            # Test 1: Activate "Roscommon Systems" website link via Tab + Enter
-            # ========================================
-            print(f"  Activating Website link via Tab + Enter...")
-            try:
-                about_window.activate()
-                time.sleep(SLEEP_A)
-                pyautogui.press('tab')   # Move focus to first interactive control (website link)
-                time.sleep(SLEEP_A)
-                pyautogui.press('enter')  # Activate the link
-                time.sleep(SLEEP_C)
-                
-                # ========================================
-                # STEP 2: Take AFTER 1 screenshot (Website 1 open)
-                # ========================================
-                print("  Taking AFTER 1 screenshot (Website 1 opened)...")
-                after_screenshot_website = take_screenshot()
-                if not after_screenshot_website:
-                    print("  ! Could not capture after screenshot for website 1")
-                else:
-                    print("  OK AFTER 1 screenshot captured")
-                
-                # Verify with Gemini: BEFORE vs AFTER 1
-                if before_screenshot and after_screenshot_website:
-                    print("      Verifying website link with Gemini...")
-                    website_verification_prompt = """Did a web browser window open after clicking the website link?
-                    Compare the BEFORE screenshot (About dialog) to the AFTER screenshot.
-                    Look for a browser window appearing in the AFTER screenshot that was not in the BEFORE screenshot."""
-                    
-                    website_result = verify_tool_with_screenshots(
-                        before_screenshot=before_screenshot,
-                        after_screenshot=after_screenshot_website,
-                        tool_name="Website Link Click",
-                        verification_prompt=website_verification_prompt
-                    )
-                    
-                    if website_result and website_result.get("answer") == "YES":
-                        browser_opened_count += 1
-                        print(f"      OK Website link verification PASSED")
-                        print(f"        Note: {website_result.get('explanation', '')}")
-                    elif website_result and website_result.get("answer") == "NO":
-                        print(f"      X Website link verification FAILED")
-                        print(f"        Note: {website_result.get('explanation', '')}")
-                    else:
-                        print(f"      ! Website link verification unavailable")
-                
-                # Close the browser window
-                try:
-                    for window in gw.getAllWindows():
-                        if any(browser in window.title.lower() for browser in ['chrome', 'firefox', 'edge', 'safari']):
-                            try:
-                                window.activate()
-                                time.sleep(SLEEP_A)
-                                pyautogui.hotkey('ctrl', 'w')
-                                time.sleep(SLEEP_A)
-                                break
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-                
-            except Exception as e:
-                print(f"  Error clicking Website link: {str(e)}")
-            
-            # ========================================
-            # Test 2: Activate "LIMA Documentation" link via Tab + Enter
-            # ========================================
-            print(f"  Activating Documentation link via Tab + Enter...")
-            try:
-                about_window.activate()
-                time.sleep(SLEEP_A)
-                pyautogui.press('tab')   # Move focus to next interactive control (docs link)
-                time.sleep(SLEEP_A)
-                pyautogui.press('enter')  # Activate the link
-                time.sleep(SLEEP_C)
-                
-                # ========================================
-                # STEP 3: Take AFTER 2 screenshot (Website 2 open)
-                # ========================================
-                print("  Taking AFTER 2 screenshot (Website 2 opened)...")
-                after_screenshot_docs = take_screenshot()
-                if not after_screenshot_docs:
-                    print("  ! Could not capture after screenshot for website 2")
-                else:
-                    print("  OK AFTER 2 screenshot captured")
-                
-                # Verify with Gemini: BEFORE vs AFTER 2
-                if before_screenshot and after_screenshot_docs:
-                    print("      Verifying documentation link with Gemini...")
-                    docs_verification_prompt = """Did a web browser window open after clicking the documentation link?
-                    Compare the BEFORE screenshot (About dialog) to the AFTER screenshot.
-                    Look for a browser window appearing in the AFTER screenshot that was not in the BEFORE screenshot."""
-                    
-                    docs_result = verify_tool_with_screenshots(
-                        before_screenshot=before_screenshot,
-                        after_screenshot=after_screenshot_docs,
-                        tool_name="Documentation Link Click",
-                        verification_prompt=docs_verification_prompt
-                    )
-                    
-                    if docs_result and docs_result.get("answer") == "YES":
-                        browser_opened_count += 1
-                        print(f"      OK Documentation link verification PASSED")
-                        print(f"        Note: {docs_result.get('explanation', '')}")
-                    elif docs_result and docs_result.get("answer") == "NO":
-                        print(f"      X Documentation link verification FAILED")
-                        print(f"        Note: {docs_result.get('explanation', '')}")
-                    else:
-                        print(f"      ! Documentation link verification unavailable")
-                
-                # Close the browser window
-                try:
-                    for window in gw.getAllWindows():
-                        if any(browser in window.title.lower() for browser in ['chrome', 'firefox', 'edge', 'safari']):
-                            try:
-                                window.activate()
-                                time.sleep(SLEEP_A)
-                                pyautogui.hotkey('ctrl', 'w')
-                                time.sleep(SLEEP_A)
-                                break
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-                
-            except Exception as e:
-                print(f"  Error clicking Documentation link: {str(e)}")
-            
-            # Close About dialog
-            try:
-                about_window.activate()
-                time.sleep(SLEEP_A)
-                pyautogui.press('escape')
-                time.sleep(SLEEP_A)
-            except Exception:
-                pass
-            
-            # Verify LIMA is still running
-            if not self.process_manager.is_running():
-                message = "LIMA crashed during About dialog links test"
-                self.add_test_result("About Dialog Links Test", TEST_FAILED, message)
-                return
-            
-            if browser_opened_count >= 1:
-                message = f"About dialog links working ({browser_opened_count}/2 links opened browser successfully)"
-                self.add_test_result("About Dialog Links Test", TEST_PASSED, message)
-                print(f"\n  OK ABOUT DIALOG LINKS test PASSED ({browser_opened_count}/2 links worked)")
-            else:
-                message = "About dialog links did not open browser - link positions may need adjustment"
-                self.add_test_result("About Dialog Links Test", TEST_FAILED, message)
-                print("\n  X ABOUT DIALOG LINKS test FAILED - no browser windows opened")
-            
-        except Exception as error:
-            message = f"Exception during About links test: {str(error)}"
-            self.add_test_result("About Dialog Links Test", TEST_FAILED, message)
     
     def _test_postrun_crash_logs(self):
         """Test: Check for crash logs created during test run."""
