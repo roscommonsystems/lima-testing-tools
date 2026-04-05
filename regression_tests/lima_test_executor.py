@@ -142,19 +142,7 @@ class LimaTestExecutor:
                 self.add_error(close_error)
             time.sleep(3)
 
-            print("\n" + "="*60)
-            print("LAUNCHING FRESH LIMA FOR TOOL TESTING")
-            print("="*60)
-
-            # Launch LIMA once for all tool tests
-            if not self._test_lima_launch():
-                print("X Could not launch LIMA for tool tests")
-                self.reporter.finalize_results()
-                self._msgbox("LIMA Tests Aborted", "LIMA failed to launch for tool tests.", error=True)
-                return False
-            time.sleep(5)
-
-            # Run all tool tests in single session.
+            # Run all tool tests — each test relaunches LIMA independently for isolation.
             # Note: test filtering/selection is not supported by design — this is a full
             # regression suite intended to run every test on every execution.
             self._test_all_tools()
@@ -397,7 +385,8 @@ class LimaTestExecutor:
         print("\n" + "="*60)
         print("TEST: Keyboard Input Detection")
         print("="*60)
-        
+        speak_tts("Keyboard input detection test")
+
         try:
             # Find LIMA window
             lima_window = find_window_by_title("LIMA", timeout=5)
@@ -447,13 +436,7 @@ class LimaTestExecutor:
             # ========================================
             print("  Executing keyboard input tool...")
             test_message = "Hello world"
-            try:
-                pyautogui.write(test_message, interval=0.2)
-            except Exception:
-                # Fallback to character by character if write fails
-                for char in test_message:
-                    pyautogui.press(char if len(char) == 1 else 'space')
-                    time.sleep(0.05)
+            type_into_lima(test_message)
             
             time.sleep(1)  # Wait for text to appear
             print(f"  OK Typed: '{test_message}'")
@@ -543,6 +526,7 @@ class LimaTestExecutor:
             dialog_title_keywords: Window title substrings to match when searching for the dialog
             verify_prompt: AI verification prompt describing what to look for
         """
+        speak_tts(f"{test_name} test")
         try:
             # Find LIMA window
             lima_window = None
@@ -730,6 +714,7 @@ class LimaTestExecutor:
         """
         Test: Open About dialog and click the website and documentation links with mouse.
         """
+        speak_tts("About dialog links test")
         try:
             # Find LIMA window
             lima_window = None

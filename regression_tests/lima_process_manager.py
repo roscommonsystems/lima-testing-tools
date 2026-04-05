@@ -3,6 +3,7 @@ LIMA Process Manager
 Handles LIMA application process lifecycle: health checks, focus, and shutdown.
 """
 
+import os
 import time
 import pyautogui
 import pygetwindow as gw
@@ -49,6 +50,28 @@ class LimaProcessManager:
         self.process = None
         self.pid = None
         return error_message
+
+    def launch(self, exe_path, install_path):
+        """
+        Launch LIMA and wait for the process to appear.
+        Does not record a test result — use this for per-test relaunches.
+
+        Returns:
+            bool: True on success, False if process not found after launch.
+        """
+        from lima_test_utils import find_process_by_name
+        original_dir = os.getcwd()
+        os.chdir(install_path)
+        try:
+            os.startfile(exe_path)
+            time.sleep(5)
+            self.process = find_process_by_name(exe_path)
+            if self.process:
+                self.pid = self.process.pid
+                return True
+            return False
+        finally:
+            os.chdir(original_dir)
 
     def refocus(self, timeout=5):
         """

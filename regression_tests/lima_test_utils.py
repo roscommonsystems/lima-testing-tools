@@ -9,6 +9,7 @@ import json
 import time
 import base64
 import logging
+import threading
 from io import BytesIO
 import pyautogui
 import pygetwindow as gw
@@ -32,6 +33,36 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Storage for API keys retrieved during license validation
 _api_keys = {}
+
+
+def speak_tts(text):
+    """Announce text via TTS in a daemon thread so it never blocks test execution."""
+    def _run():
+        try:
+            import pyttsx3
+            engine = pyttsx3.init()
+            engine.say(text)
+            engine.runAndWait()
+        except Exception:
+            pass
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def type_into_lima(text):
+    """
+    Type text into LIMA's text input using pywinauto WM_CHAR delivery.
+    Falls back to pyautogui if pywinauto raises.
+    """
+    try:
+        from pywinauto import Desktop
+        desktop = Desktop(backend="uia")
+        lima_app = desktop.window(title_re=".*LIMA Screen Reader.*")
+        edit = lima_app.child_window(control_type="Edit")
+        edit.set_focus()
+        time.sleep(0.2)
+        edit.type_keys(text, with_spaces=True)
+    except Exception:
+        pyautogui.write(text, interval=0.15)
 
 
 def find_lima_executable():

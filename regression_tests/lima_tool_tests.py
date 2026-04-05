@@ -8,14 +8,15 @@ import pyautogui
 
 from lima_test_utils import (
     take_screenshot, verify_tool_with_screenshots,
-    find_window_by_title, TEST_PASSED, TEST_FAILED
+    find_window_by_title, TEST_PASSED, TEST_FAILED,
+    speak_tts, type_into_lima
 )
 
 
 def run_all_tool_tests(executor):
-    """Run all LIMA AI tool tests in a single session with screenshot verification."""
+    """Run all LIMA AI tool tests, relaunching LIMA fresh before each test."""
     print("\n" + "=" * 60)
-    print("TESTING ALL LIMA AI TOOLS (SINGLE SESSION)")
+    print("TESTING ALL LIMA AI TOOLS")
     print("=" * 60)
 
     # (test_name, command, result_name, verification_type, verification_prompt)
@@ -41,29 +42,44 @@ def run_all_tool_tests(executor):
         print("\n" + "-" * 50)
         print(f"TOOL TEST {i}/{total}: {test_name}")
         print("-" * 50)
+        speak_tts(f"Tool test {i} of {total}: {test_name.lower()}")
 
         try:
-            # Step 1: Ensure LIMA is focused (always maximize)
+            # Step 1: Close any previous LIMA instance and launch fresh for isolation
+            executor.process_manager.close()
+            time.sleep(2)
+            print("  Launching fresh LIMA...")
+            if not executor.process_manager.launch(
+                executor.process_manager.exe_full_path,
+                executor.process_manager.install_path
+            ):
+                message = "Could not launch LIMA for test"
+                executor.add_test_result(result_name, TEST_FAILED, message)
+                print(f"  X {message}")
+                continue
+            time.sleep(3)
+
+            # Step 2: Ensure LIMA is focused (always maximize)
             if not executor.process_manager.refocus(timeout=10):
                 message = "Could not refocus on LIMA window"
                 executor.add_test_result(result_name, TEST_FAILED, message)
                 print(f"  X {message}")
                 continue
 
-            # Step 2: Clear input state
+            # Step 3: Clear input state
             pyautogui.press('escape')
             time.sleep(0.5)
 
-            # Step 3: Release modifier keys
+            # Step 4: Release modifier keys
             for key in ['win', 'ctrl', 'alt', 'shift', 'winleft', 'winright']:
                 pyautogui.keyUp(key)
             time.sleep(0.3)
 
-            # Step 4: Capture mouse BEFORE
+            # Step 5: Capture mouse BEFORE
             mouse_before = pyautogui.position()
             print(f"  Mouse position before: {mouse_before}")
 
-            # Step 5: Take BEFORE screenshot (for visual verification)
+            # Step 6: Take BEFORE screenshot (for visual verification)
             before_screenshot = None
             if verification_type != "no_verification":
                 print("  Taking BEFORE screenshot...")
@@ -73,18 +89,18 @@ def run_all_tool_tests(executor):
                 else:
                     print("  OK BEFORE screenshot captured")
 
-            # Step 6: Type command
+            # Step 7: Type command directly into LIMA's text input
             print(f"  Executing tool: '{command}'")
-            pyautogui.write(command, interval=0.2)
+            type_into_lima(command)
             time.sleep(1.0)
             print("  OK Command typed")
 
-            # Step 7: Submit
+            # Step 8: Submit
             print("  Pressing Enter to submit...")
             pyautogui.press('enter')
             time.sleep(3.0)
 
-            # Step 8: Wait for AI execution
+            # Step 9: Wait for AI execution
             wait_time = 20
             print(f"  Waiting for AI to process ({wait_time} seconds)...")
 
@@ -100,7 +116,7 @@ def run_all_tool_tests(executor):
                 if (i + 1) % 5 == 0:
                     print(f"    {i + 1}/{wait_time} seconds...")
 
-            # Step 9: Take AFTER screenshot (for visual verification)
+            # Step 10: Take AFTER screenshot (for visual verification)
             after_screenshot = None
             if verification_type != "no_verification":
                 print("  Taking AFTER screenshot...")
@@ -109,16 +125,8 @@ def run_all_tool_tests(executor):
                     print("  ! Could not capture after screenshot")
                 else:
                     print("  OK AFTER screenshot captured")
-            elif verification_type == "content_verification":
-                # For weather and long content, take screenshot after response
-                print("  Taking AFTER screenshot (after LIMA response)...")
-                after_screenshot = take_screenshot()
-                if not after_screenshot:
-                    print("  ! Could not capture after screenshot")
-                else:
-                    print("  OK AFTER screenshot captured")
 
-            # Step 10: Verification using OpenRouter Gemini
+            # Step 11: Verification using OpenRouter Gemini
             verification_result = None
             if verification_type != "no_verification" and before_screenshot and after_screenshot:
                 print("  Verifying with OpenRouter Gemini model...")
@@ -142,7 +150,7 @@ def run_all_tool_tests(executor):
                 for key in ['win', 'winleft', 'winright']:
                     pyautogui.keyUp(key)
 
-            # Step 12: Record result
+            # Step 12: Cleanup and record result
             if executor.process_manager.is_running():
                 if verification_type == "no_verification":
                     # For tools that don't require visual verification
@@ -200,6 +208,7 @@ def run_all_tool_tests(executor):
     try:
         # Test BACKSPACE 5 TIMES with Notepad
         print("\n--- TESTING BACKSPACE 5 TIMES ---")
+        speak_tts("Backspace test")
         try:
             # Step 1: Open Notepad
             print("1. Opening Notepad...")
@@ -254,7 +263,7 @@ def run_all_tool_tests(executor):
                 executor.add_test_result("AI Tool Test: Press Backspace", TEST_FAILED, "Could not refocus on LIMA")
                 return
 
-            pyautogui.write("press backspace 5 times", interval=0.2)
+            type_into_lima("press backspace 5 times")
             time.sleep(0.5)
             pyautogui.press('enter')
             time.sleep(3.0)
@@ -321,6 +330,7 @@ def run_all_tool_tests(executor):
 
         # Test ARROW LEFT
         print("\n--- TESTING ARROW LEFT ---")
+        speak_tts("Arrow left test")
         try:
             # Step 1: Open Notepad again
             print("1. Opening Notepad...")
@@ -367,7 +377,7 @@ def run_all_tool_tests(executor):
                 executor.add_test_result("AI Tool Test: Arrow Key Left", TEST_FAILED, "Could not refocus on LIMA")
                 return
 
-            pyautogui.write("press arrow key left", interval=0.2)
+            type_into_lima("press arrow key left")
             time.sleep(0.5)
             pyautogui.press('enter')
             time.sleep(3.0)
