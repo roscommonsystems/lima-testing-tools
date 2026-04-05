@@ -64,15 +64,61 @@ def type_into_lima(text, max_tabs=10):
 
     desktop = Desktop(backend="uia")
 
+    def is_text_input(element):
+        """
+        Check if the element is a text input using multiple fallback methods.
+        Returns True if the element is an Edit control, False otherwise.
+        """
+        try:
+            # Method 1: Check control_type() which returns the UIA control type
+            control_type = element.control_type()
+            if control_type:
+                # ControlType 50004 is Edit in UIA, or it might return "Edit" as string
+                if control_type == "Edit" or str(control_type) == "50004":
+                    return True
+
+            # Method 2: Check friendly_class_name() as fallback
+            friendly_class = element.friendly_class_name()
+            if friendly_class:
+                if friendly_class == "Edit":
+                    return True
+
+            # Method 3: Check element_info.control_type which may have the localized name
+            try:
+                element_info_control_type = element.element_info.control_type
+                if element_info_control_type:
+                    if element_info_control_type == "Edit" or str(element_info_control_type).lower() == "edit":
+                        return True
+            except Exception:
+                pass
+
+        except Exception:
+            pass
+        return False
+
     # Tab until the focused element is a text input (Edit control)
     for attempt in range(max_tabs):
         try:
             focused = desktop.focused_element()
-            if focused.friendly_class_name() == "Edit":
+            if is_text_input(focused):
+                # Log what was detected for debugging purposes
+                try:
+                    control_type = focused.control_type()
+                    friendly_class = focused.friendly_class_name()
+                    print(f"  OK Found text input: control_type={control_type}, friendly_class={friendly_class}")
+                except Exception:
+                    pass
                 break
-        except Exception:
-            pass
-        print(f"  ! Focused element is not text input (attempt {attempt + 1}/{max_tabs}), tabbing...")
+            else:
+                # Log what was found instead for debugging
+                try:
+                    control_type = focused.control_type()
+                    friendly_class = focused.friendly_class_name()
+                    print(f"  ! Focused element is not text input (attempt {attempt + 1}/{max_tabs}): control_type={control_type}, friendly_class={friendly_class}, tabbing...")
+                except Exception:
+                    print(f"  ! Focused element is not text input (attempt {attempt + 1}/{max_tabs}), tabbing...")
+        except Exception as error:
+            print(f"  ! Error checking focused element (attempt {attempt + 1}/{max_tabs}): {error}, tabbing...")
         pyautogui.press('tab')
         time.sleep(0.3)
 
@@ -97,10 +143,64 @@ def verify_text_in_lima_input(expected_text):
         from pywinauto import Desktop
         desktop = Desktop(backend="uia")
         lima_app = desktop.window(title_re=".*LIMA Screen Reader.*")
-        edit = lima_app.child_window(control_type="Edit")
-        value = edit.get_value()
-        return expected_text in value
-    except Exception:
+
+        # Try multiple methods to find the Edit control
+        edit = None
+
+        # Method 1: Try child_window with control_type="Edit"
+        try:
+            edit = lima_app.child_window(control_type="Edit")
+            edit.wait('exists', timeout=1)
+        except Exception:
+            pass
+
+        # Method 2: Try finding by class name (Edit control class is typically "Edit")
+        if edit is None:
+            try:
+                edit = lima_app.child_window(class_name="Edit")
+                edit.wait('exists', timeout=1)
+            except Exception:
+                pass
+
+        # Method 3: Try to find all Edit controls and pick the first visible one
+        if edit is None:
+            try:
+                edit_controls = lima_app.children(control_type="Edit")
+                for ctrl in edit_controls:
+                    try:
+                        # Check if the control is visible and enabled
+                        if ctrl.is_visible() and ctrl.is_enabled():
+                            edit = ctrl
+                            break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+        if edit is None:
+            print(f"  ! Could not find LIMA Edit control to verify text")
+            return False
+
+        # Get the text value from the Edit control
+        try:
+            value = edit.get_value()
+        except Exception:
+            # Fallback: try window_text() if get_value() fails
+            try:
+                value = edit.window_text()
+            except Exception:
+                print(f"  ! Could not retrieve text from LIMA Edit control")
+                return False
+
+        if expected_text in value:
+            print(f"  OK Verified text in LIMA input: '{expected_text}'")
+            return True
+        else:
+            print(f"  ! Text not found in LIMA input. Expected: '{expected_text}', Got: '{value}'")
+            return False
+
+    except Exception as error:
+        print(f"  ! Error verifying text in LIMA input: {error}")
         return False
 
 
