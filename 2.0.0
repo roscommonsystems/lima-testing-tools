@@ -1,0 +1,2 @@
+Requirement already satisfied: uiautomation in c:\users\white\desktop\code\lima-testing-tools\.venv\lib\site-packages (2.0.29)
+Requirement already satisfied: comtypes>=1.2.1 in c:\users\white\desktop\code\lima-testing-tools\.venv\lib\site-packages (from uiautomation) (1.4.16)

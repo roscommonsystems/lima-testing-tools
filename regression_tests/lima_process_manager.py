@@ -105,13 +105,22 @@ class LimaProcessManager:
                                 pass
                             # Use Windows UI Automation to click the actual text input (Edit control)
                             try:
-                                from pywinauto import Desktop
-                                desktop = Desktop(backend="uia")
-                                lima_app = desktop.window(title_re=".*LIMA Screen Reader.*")
-                                edit = lima_app.child_window(control_type="Edit")
-                                edit.set_focus()
-                                edit.click_input()
-                                time.sleep(SLEEP_A)
+                                import uiautomation as uia
+                                lima_window = None
+                                for ctrl in uia.GetRootControl().GetChildren():
+                                    if ctrl.Name and "LIMA" in ctrl.Name:
+                                        lima_window = ctrl
+                                        break
+                                if lima_window:
+                                    edit = lima_window.EditControl()
+                                    if edit and edit.Exists():
+                                        edit.SetFocus()
+                                        edit.Click()
+                                        time.sleep(SLEEP_A)
+                                    else:
+                                        raise Exception("Edit control not found")
+                                else:
+                                    raise Exception("LIMA window not found")
                             except Exception:
                                 # Fallback: click near window bottom if UIA fails
                                 click_x = window.left + (window.width // 2)

@@ -16,6 +16,7 @@ import pygetwindow as gw
 from PIL import ImageGrab
 import psutil
 from openai import OpenAI
+import uiautomation as uia
 
 # Add parent directory to path to import lima_auth
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -60,27 +61,17 @@ def type_into_lima(text, max_tabs=10):
     element currently has focus — if it is not a text input (Edit control),
     presses Tab and re-checks until it finds one, up to max_tabs times.
     """
-    from pywinauto import Desktop
-    from pywinauto.uia_defines import IUIA
-    from pywinauto.windows.uia_element_info import UIAElementInfo
-    from pywinauto.controls.uia_controls import UIAWrapper
-
-    desktop = Desktop(backend="uia")
 
     def get_focused_element():
         """
-        Get the currently focused UI element using UIA Automation interface.
+        Get the currently focused UI element using uiautomation interface.
         Returns the focused element wrapper or None if not found.
         """
         try:
-            # Use the IUIA singleton to get the focused element
-            iuia = IUIA()
-            focused_elem = iuia.get_focused_element()
-            if focused_elem:
-                # Create UIAElementInfo from the focused element
-                elem_info = UIAElementInfo(focused_elem)
-                # Get the wrapper for this element
-                return UIAWrapper(elem_info)
+            # Use uiautomation to get the focused element
+            focused_element = uia.GetFocusedControl()
+            if focused_element:
+                return focused_element
         except Exception as e:
             print(f"  ! Debug: get_focused_element error: {e}")
         return None
@@ -94,35 +85,21 @@ def type_into_lima(text, max_tabs=10):
             return False
 
         try:
-            # Method 1: Check control_type() which returns the UIA control type
-            control_type = element.control_type()
-            if control_type:
-                # ControlType 50004 is Edit in UIA, or it might return "Edit" as string
-                if control_type == "Edit" or str(control_type) == "50004":
+            # Method 1: Check ControlTypeName in uiautomation
+            control_type_name = element.ControlTypeName
+            if control_type_name:
+                if control_type_name == "Edit" or control_type_name == "EditControl":
                     return True
 
-            # Method 2: Check friendly_class_name() as fallback
-            friendly_class = element.friendly_class_name()
-            if friendly_class:
-                if friendly_class == "Edit":
-                    return True
+            # Method 2: Check ClassName as fallback
+            class_name = element.ClassName
+            if class_name and "edit" in class_name.lower():
+                return True
 
-            # Method 3: Check window_class which may have the class name
-            try:
-                window_class = element.window_class()
-                if window_class and "edit" in window_class.lower():
-                    return True
-            except Exception:
-                pass
-
-            # Method 4: Check element_info.control_type which may have the localized name
-            try:
-                element_info_control_type = element.element_info.control_type
-                if element_info_control_type:
-                    if element_info_control_type == "Edit" or str(element_info_control_type).lower() == "edit":
-                        return True
-            except Exception:
-                pass
+            # Method 3: Check AutomationId
+            automation_id = element.AutomationId
+            if automation_id and ("edit" in automation_id.lower() or "input" in automation_id.lower()):
+                return True
 
         except Exception as e:
             print(f"  ! Debug: is_text_input error: {e}")
@@ -137,97 +114,129 @@ def type_into_lima(text, max_tabs=10):
         elif is_text_input(focused):
             # Log what was detected for debugging purposes
             try:
-                control_type = focused.control_type()
-                friendly_class = focused.friendly_class_name()
-                window_class = focused.window_class() if hasattr(focused, 'window_class') else 'N/A'
-                print(f"  OK Found text input: control_type={control_type}, friendly_class={friendly_class}, window_class={window_class}")
+                control_type_name = focused.ControlTypeName
+                class_name = focused.ClassName
+                name = focused.Name if focused.Name else 'N/A'
+                print(f"  OK Found text input: ControlTypeName={control_type_name}, ClassName={class_name}, Name='{name}'")
             except Exception as e:
                 print(f"  OK Found text input (details unavailable: {e})")
             break
         else:
             # Log what was found instead for debugging
             try:
-                control_type = focused.control_type()
-                friendly_class = focused.friendly_class_name()
-                window_class = focused.window_class() if hasattr(focused, 'window_class') else 'N/A'
-                name = focused.window_text() if hasattr(focused, 'window_text') else 'N/A'
-                print(f"  ! Focused element is not text input (attempt {attempt + 1}/{max_tabs}): control_type={control_type}, friendly_class={friendly_class}, window_class={window_class}, name='{name}', tabbing...")
+                control_type_name = focused.ControlTypeName
+                class_name = focused.ClassName
+                name = focused.Name if focused.Name else 'N/A'
+                print(f"  ! Focused element is not text input (attempt {attempt + 1}/{max_tabs}): ControlTypeName={control_type_name}, ClassName={class_name}, Name='{name}', tabbing...")
             except Exception as e:
                 print(f"  ! Focused element is not text input (attempt {attempt + 1}/{max_tabs}): error getting details: {e}, tabbing...")
 
         pyautogui.press('tab')
         time.sleep(0.3)
 
-    # Type into whichever Edit control now has focus
+    # Type into whichever Edit control now has focus using uiautomation
     try:
-        lima_app = desktop.window(title_re=".*LIMA Screen Reader.*")
-        edit = lima_app.child_window(control_type="Edit")
-        edit.set_focus()
-        edit.click_input()
-        time.sleep(0.2)
-        edit.type_keys(text, with_spaces=True)
+        # Find the LIMA window and its Edit control
+        lima_windows = uia.GetRootControl().GetChildren()
+        lima_window = None
+        for window in lima_windows:
+            if window.Name and "LIMA" in window.Name:
+                lima_window = window
+                break
+
+        if lima_window is None:
+            # Fallback: Use pyautogui if uiautomation cannot find LIMA window
+            print(f"  ! Could not find LIMA window with uiautomation, falling back to pyautogui.write")
+            pyautogui.write(text, interval=0.15)
+            return
+
+        # Find the Edit control within the LIMA window
+        edit_control = lima_window.EditControl()
+        if edit_control and edit_control.Exists():
+            edit_control.SetFocus()
+            edit_control.Click()
+            time.sleep(0.2)
+            edit_control.SendKeys(text)
+            print(f"  OK Typed text using uiautomation")
+        else:
+            # Fallback: Search recursively for Edit controls
+            edit_controls = lima_window.GetChildren()
+            for child in edit_controls:
+                if child.ControlTypeName == "Edit" or child.ControlTypeName == "EditControl":
+                    child.SetFocus()
+                    child.Click()
+                    time.sleep(0.2)
+                    child.SendKeys(text)
+                    print(f"  OK Typed text using uiautomation (recursive search)")
+                    break
+            else:
+                # No Edit control found, fallback to pyautogui
+                print(f"  ! Could not find Edit control, falling back to pyautogui.write")
+                pyautogui.write(text, interval=0.15)
     except Exception as e:
-        print(f"  ! Could not use pywinauto to type, falling back to pyautogui.write: {e}")
+        print(f"  ! Could not use uiautomation to type, falling back to pyautogui.write: {e}")
         pyautogui.write(text, interval=0.15)
 
 
 def verify_text_in_lima_input(expected_text):
     """
     Check that expected_text is present in LIMA's Edit control.
-    Returns True if found, False if not (or if pywinauto can't reach the control).
+    Returns True if found, False if not (or if uiautomation can't reach the control).
     """
     try:
-        from pywinauto import Desktop
-        desktop = Desktop(backend="uia")
-        lima_app = desktop.window(title_re=".*LIMA Screen Reader.*")
+        # Find the LIMA window using uiautomation
+        lima_window = None
+        for window in uia.GetRootControl().GetChildren():
+            if window.Name and "LIMA" in window.Name:
+                lima_window = window
+                break
+
+        if lima_window is None:
+            print(f"  ! Could not find LIMA window to verify text")
+            return False
 
         # Try multiple methods to find the Edit control
-        edit = None
+        edit_control = None
 
-        # Method 1: Try child_window with control_type="Edit"
+        # Method 1: Try direct EditControl access
         try:
-            edit = lima_app.child_window(control_type="Edit")
-            edit.wait('exists', timeout=1)
+            edit_control = lima_window.EditControl()
+            if edit_control and edit_control.Exists():
+                pass  # Successfully found
+            else:
+                edit_control = None
         except Exception:
             pass
 
-        # Method 2: Try finding by class name (Edit control class is typically "Edit")
-        if edit is None:
+        # Method 2: Search recursively for Edit controls
+        if edit_control is None:
             try:
-                edit = lima_app.child_window(class_name="Edit")
-                edit.wait('exists', timeout=1)
+                all_controls = lima_window.GetChildren()
+                for ctrl in all_controls:
+                    if ctrl.ControlTypeName in ["Edit", "EditControl"]:
+                        edit_control = ctrl
+                        break
             except Exception:
                 pass
 
-        # Method 3: Try to find all Edit controls and pick the first visible one
-        if edit is None:
-            try:
-                edit_controls = lima_app.children(control_type="Edit")
-                for ctrl in edit_controls:
-                    try:
-                        # Check if the control is visible and enabled
-                        if ctrl.is_visible() and ctrl.is_enabled():
-                            edit = ctrl
-                            break
-                    except Exception:
-                        continue
-            except Exception:
-                pass
-
-        if edit is None:
+        if edit_control is None:
             print(f"  ! Could not find LIMA Edit control to verify text")
             return False
 
         # Get the text value from the Edit control
         try:
-            value = edit.get_value()
-        except Exception:
-            # Fallback: try window_text() if get_value() fails
-            try:
-                value = edit.window_text()
-            except Exception:
+            # Try to get the text value from the control
+            value = None
+            if hasattr(edit_control, 'GetValue'):
+                value = edit_control.GetValue()
+            if not value and hasattr(edit_control, 'Name'):
+                value = edit_control.Name
+            if not value:
                 print(f"  ! Could not retrieve text from LIMA Edit control")
                 return False
+        except Exception as error:
+            print(f"  ! Error getting text from LIMA Edit control: {error}")
+            return False
 
         if expected_text in value:
             print(f"  OK Verified text in LIMA input: '{expected_text}'")
