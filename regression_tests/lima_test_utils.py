@@ -225,10 +225,19 @@ def verify_text_in_lima_input(expected_text):
 
         # Get the text value from the Edit control
         try:
-            # Try to get the text value from the control
             value = None
-            if hasattr(edit_control, 'GetValue'):
-                value = edit_control.GetValue()
+            # Method 1: ValuePattern.Value (correct API for uiautomation library)
+            try:
+                value = edit_control.ValuePattern.Value
+            except Exception:
+                pass
+            # Method 2: TextPattern (also available on QTextEdit)
+            if not value:
+                try:
+                    value = edit_control.TextPattern.DocumentRange.GetText(-1)
+                except Exception:
+                    pass
+            # Method 3: Name attribute (last resort)
             if not value and hasattr(edit_control, 'Name'):
                 value = edit_control.Name
             if not value:
