@@ -72,6 +72,22 @@ def type_into_lima(text):
         pyautogui.write(text, interval=0.15)
 
 
+def verify_text_in_lima_input(expected_text):
+    """
+    Check that expected_text is present in LIMA's Edit control.
+    Returns True if found, False if not (or if pywinauto can't reach the control).
+    """
+    try:
+        from pywinauto import Desktop
+        desktop = Desktop(backend="uia")
+        lima_app = desktop.window(title_re=".*LIMA Screen Reader.*")
+        edit = lima_app.child_window(control_type="Edit")
+        value = edit.get_value()
+        return expected_text in value
+    except Exception:
+        return False
+
+
 def find_lima_executable():
     """
     Search for LIMA executable in Program Files locations.

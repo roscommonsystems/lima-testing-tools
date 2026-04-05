@@ -9,7 +9,7 @@ import pyautogui
 from lima_test_utils import (
     take_screenshot, verify_tool_with_screenshots,
     find_window_by_title, TEST_PASSED, TEST_FAILED,
-    speak_tts, type_into_lima,
+    speak_tts, type_into_lima, verify_text_in_lima_input,
     SLEEP_A, SLEEP_B, SLEEP_C
 )
 
@@ -94,6 +94,13 @@ def run_all_tool_tests(executor):
             print(f"  Executing tool: '{command}'")
             type_into_lima(command)
             time.sleep(SLEEP_A)
+
+            if not verify_text_in_lima_input(command):
+                message = "Text not found in LIMA input field after typing — focus issue"
+                executor.add_test_result(result_name, TEST_FAILED, message)
+                print(f"  X {message}")
+                continue
+
             print("  OK Command typed")
 
             # Step 8: Submit
