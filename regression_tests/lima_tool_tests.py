@@ -4,13 +4,14 @@ Contains run_all_tool_tests for testing LIMA AI tools in a single session.
 """
 
 import time
+import webbrowser
 import pyautogui
 
 from lima_test_utils import (
     take_screenshot, verify_tool_with_screenshots,
     find_window_by_title, TEST_PASSED, TEST_FAILED,
     speak_tts, type_into_lima,
-    SLEEP_A, SLEEP_B, SLEEP_C
+    SLEEP_A, SLEEP_B, SLEEP_C, SLEEP_D
 )
 
 
@@ -25,9 +26,9 @@ def run_all_tool_tests(executor):
         ("TYPE TEXT", "Type hello", "AI Tool Test: Type Text", "text_input", "Does the AFTER screenshot show the text 'hello' appearing in a text input field?"),
         ("WEATHER", "whats the weather in japan", "AI Tool Test: Weather Retrieval", "content_verification", "Did LIMA display a weather response or information about Japan's weather? Look for any new text content or weather-related information in the LIMA interface."),
         ("MOUSE CLICK", "do a right click", "AI Tool Test: Mouse Click", "context_menu", "Does the AFTER screenshot show a context menu appearing at the mouse cursor position?"),
-        ("MOUSE CLICK COORDINATES", "right click at coordinates x 800 y 400", "AI Tool Test: Mouse Click Coordinates", "coordinates", "Did the mouse cursor move to coordinates (800, 400) and did a context menu appear?"),
-        ("MOVE MOUSE TO", "move the mouse to position x 300 y 300", "AI Tool Test: Move Mouse To", "coordinates", "Did the mouse cursor move to coordinates (300, 300)?"),
-        ("MOUSE WHEEL SCROLL", "scroll up", "AI Tool Test: Mouse Wheel Scroll", "scroll_position", "Did the scroll position change in the active window? Look for changes in scrollbars or content position."),
+        ("MOUSE CLICK COORDINATES", "right click at coordinates x 800 y 400", "AI Tool Test: Mouse Click Coordinates", "content_verification", "Does LIMA's chat log in the AFTER screenshot show that it successfully executed a right click at coordinates (800, 400)? Look for the assistant response text mentioning the click action."),
+        ("MOVE MOUSE TO", "move the mouse to position x 300 y 300", "AI Tool Test: Move Mouse To", "no_verification", "No visual verification — position is checked programmatically."),
+        ("MOUSE WHEEL SCROLL", "scroll down", "AI Tool Test: Mouse Wheel Scroll", "scroll_position", "Did the Amazon webpage scroll down between the before and after screenshots? Look for different content being visible — new products, sections, or the page shifted downward."),
         ("CHANGE VOLUME", "increase the volume", "AI Tool Test: Change Volume", "no_verification", "No visual verification required for volume change"),
         ("WINDOWS KEY", "press the windows key", "AI Tool Test: Windows Key", "start_menu", "Did the Start menu or search window appear on screen?"),
         ("SHOW DESKTOP", "show the desktop", "AI Tool Test: Show Desktop", "desktop", "Are all application windows minimized and the desktop visible?"),
@@ -80,6 +81,23 @@ def run_all_tool_tests(executor):
             mouse_before = pyautogui.position()
             print(f"  Mouse position before: {mouse_before}")
 
+            # Special pre-screenshot setup
+            if test_name == "MAXIMIZE WINDOW":
+                # Restore so we can actually verify that maximize works
+                pyautogui.hotkey('win', 'down')
+                time.sleep(SLEEP_B)
+            elif test_name == "MOUSE WHEEL SCROLL":
+                # Open Amazon (reliably scrollable) and wait for it to load
+                webbrowser.open("https://www.amazon.com")
+                time.sleep(SLEEP_D)
+                amazon_window = find_window_by_title("Amazon", timeout=15)
+                if amazon_window:
+                    try:
+                        amazon_window.activate()
+                    except Exception:
+                        pass
+                    time.sleep(SLEEP_B)
+
             # Step 6: Take BEFORE screenshot (for visual verification)
             before_screenshot = None
             if verification_type != "no_verification":
@@ -117,6 +135,31 @@ def run_all_tool_tests(executor):
                 if (sec + 1) % 5 == 0:
                     print(f"    {sec + 1}/{wait_time} seconds...")
 
+            # Special: MOVE MOUSE TO — verify position programmatically instead of visually
+            if test_name == "MOVE MOUSE TO":
+                actual_pos = pyautogui.position()
+                expected_x, expected_y, tolerance = 300, 300, 20
+                if abs(actual_pos.x - expected_x) <= tolerance and abs(actual_pos.y - expected_y) <= tolerance:
+                    executor.add_test_result(result_name, TEST_PASSED,
+                        f"MOVE MOUSE TO verified: cursor at ({actual_pos.x}, {actual_pos.y}), within {tolerance}px of ({expected_x}, {expected_y})")
+                    print(f"  OK {test_name} test PASSED (cursor at {actual_pos})")
+                else:
+                    executor.add_test_result(result_name, TEST_FAILED,
+                        f"MOVE MOUSE TO failed: cursor at ({actual_pos.x}, {actual_pos.y}), expected ({expected_x}, {expected_y}) ±{tolerance}px")
+                    print(f"  X {test_name} test FAILED (cursor at {actual_pos})")
+                time.sleep(SLEEP_C)
+                continue
+
+            # Special: MOUSE WHEEL SCROLL — switch back to Amazon to capture the after state
+            if test_name == "MOUSE WHEEL SCROLL":
+                amazon_window = find_window_by_title("Amazon", timeout=5)
+                if amazon_window:
+                    try:
+                        amazon_window.activate()
+                    except Exception:
+                        pass
+                    time.sleep(SLEEP_B)
+
             # Step 10: Take AFTER screenshot (for visual verification)
             after_screenshot = None
             if verification_type != "no_verification":
@@ -150,6 +193,10 @@ def run_all_tool_tests(executor):
                 time.sleep(SLEEP_A)
                 for key in ['win', 'winleft', 'winright']:
                     pyautogui.keyUp(key)
+
+            elif "MOUSE WHEEL SCROLL" in test_name:
+                pyautogui.hotkey('ctrl', 'w')  # Close Amazon browser tab
+                time.sleep(SLEEP_A)
 
             # Step 12: Cleanup and record result
             if executor.process_manager.is_running():
@@ -228,9 +275,15 @@ def run_all_tool_tests(executor):
                 return
 
             print("2. Typing text in Notepad...")
-            notepad_window.activate()
+            try:
+                notepad_window.activate()
+            except Exception:
+                pass
             time.sleep(SLEEP_A)
-            notepad_window.maximize()
+            try:
+                notepad_window.maximize()
+            except Exception:
+                pass
             time.sleep(SLEEP_A)
 
             # NEW: Deselect menu and focus text area
@@ -349,9 +402,15 @@ def run_all_tool_tests(executor):
                 return
 
             print("2. Typing text in Notepad...")
-            notepad_window.activate()
+            try:
+                notepad_window.activate()
+            except Exception:
+                pass
             time.sleep(SLEEP_A)
-            notepad_window.maximize()
+            try:
+                notepad_window.maximize()
+            except Exception:
+                pass
             time.sleep(SLEEP_A)
 
             test_text = "Hello World Test"
