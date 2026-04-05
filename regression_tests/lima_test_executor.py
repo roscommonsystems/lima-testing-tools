@@ -157,12 +157,12 @@ class LimaTestExecutor:
         self.reporter.finalize_results()
         passed = self.reporter.get_overall_status() == TEST_PASSED
         tests = self.reporter.test_results["tests"]
-        total = len(tests)
+        total_tests = len(tests)
         failures = sum(1 for t in tests if t.get("status") == TEST_FAILED)
         if passed:
-            self._msgbox("LIMA Tests Complete", f"All {total} tests passed.")
+            self._msgbox("LIMA Tests Complete", f"All {total_tests} tests passed.")
         else:
-            self._msgbox("LIMA Tests Complete", f"{failures} of {total} tests failed.\n\nCheck test_results.json for details.", error=True)
+            self._msgbox("LIMA Tests Complete", f"{failures} of {total_tests} tests failed.\n\nCheck test_results.json for details.", error=True)
         return passed
     
     # ========================================

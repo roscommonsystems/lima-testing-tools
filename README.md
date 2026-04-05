@@ -69,10 +69,11 @@ lima-testing-suite/
 ├── lima_auth.py                # Authentication module
 ├── lima_config.json.example    # Example config file
 └── regression_tests/
-    ├── lima_regression_tests.py    # Regression tests entry point
+    ├── lima_process_manager.py     # LIMA application lifecycle management
     ├── lima_test_executor.py       # Test execution logic
     ├── lima_test_reporter.py       # Result reporting
-    └── lima_test_utils.py          # Utility functions
+    ├── lima_test_utils.py          # Utility functions
+    └── lima_tool_tests.py          # AI tool test scenarios
 ```
 
 ## Security Notes

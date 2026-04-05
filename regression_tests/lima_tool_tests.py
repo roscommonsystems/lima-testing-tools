@@ -112,7 +112,7 @@ def run_all_tool_tests(executor):
             wait_time = 20
             print(f"  Waiting for AI to process ({wait_time} seconds)...")
 
-            for i in range(wait_time):
+            for sec in range(wait_time):
                 time.sleep(SLEEP_A)
 
                 if not executor.process_manager.is_running():
@@ -121,8 +121,8 @@ def run_all_tool_tests(executor):
                     print(f"  X {message}")
                     return
 
-                if (i + 1) % 5 == 0:
-                    print(f"    {i + 1}/{wait_time} seconds...")
+                if (sec + 1) % 5 == 0:
+                    print(f"    {sec + 1}/{wait_time} seconds...")
 
             # Step 10: Take AFTER screenshot (for visual verification)
             after_screenshot = None
