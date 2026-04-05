@@ -334,7 +334,7 @@ def verify_tool_with_screenshots(before_screenshot, after_screenshot, tool_name,
 
         # Call OpenRouter API with Gemini 3 model
         response = client.chat.completions.create(
-            model="google/gemini-2.0-flash-001",
+            model="google/gemini-3-flash-preview",
             messages=[
                 {
                     "role": "system",

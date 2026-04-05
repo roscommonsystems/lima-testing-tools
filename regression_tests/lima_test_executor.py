@@ -384,20 +384,29 @@ class LimaTestExecutor:
             lima_window.maximize()
             time.sleep(1.0)
             
-            # Click the window center to focus the text input
+            # Use Windows UI Automation to click the actual text input (Edit control)
             try:
-                click_x = lima_window.left + (lima_window.width // 2)
-                click_y = lima_window.top + (lima_window.height // 2)
-
-                pyautogui.click(click_x, click_y)
+                from pywinauto import Desktop
+                desktop = Desktop(backend="uia")
+                lima_app = desktop.window(title_re=".*LIMA Screen Reader.*")
+                edit = lima_app.child_window(control_type="Edit")
+                edit.set_focus()
+                edit.click_input()
                 time.sleep(0.5)
             except Exception:
-                pass
+                # Fallback: click near window bottom if UIA fails
+                try:
+                    click_x = lima_window.left + (lima_window.width // 2)
+                    click_y = lima_window.top + int(lima_window.height * 0.88)
+                    pyautogui.click(click_x, click_y)
+                    time.sleep(0.5)
+                except Exception:
+                    pass
             
             # ========================================
             # STEP 1: Take BEFORE screenshot
             # ========================================
-            print("  [1/4] Taking BEFORE screenshot...")
+            print("  Taking BEFORE screenshot...")
             before_screenshot = take_screenshot()
             if not before_screenshot:
                 message = "Failed to capture before screenshot"
@@ -408,7 +417,7 @@ class LimaTestExecutor:
             # ========================================
             # STEP 2: Execute the tool (type text)
             # ========================================
-            print("  [2/4] Executing keyboard input tool...")
+            print("  Executing keyboard input tool...")
             test_message = "Hello world"
             try:
                 pyautogui.write(test_message, interval=0.2)
@@ -424,7 +433,7 @@ class LimaTestExecutor:
             # ========================================
             # STEP 3: Take AFTER screenshot
             # ========================================
-            print("  [3/4] Taking AFTER screenshot...")
+            print("  Taking AFTER screenshot...")
             after_screenshot = take_screenshot()
             if not after_screenshot:
                 message = "Failed to capture after screenshot"
@@ -435,7 +444,7 @@ class LimaTestExecutor:
             # ========================================
             # STEP 4: Verify with OpenRouter Gemini
             # ========================================
-            print("  [4/4] Verifying with OpenRouter Gemini model...")
+            print("  Verifying with OpenRouter Gemini model...")
             verification_prompt = f"""Does the AFTER screenshot show the text '{test_message}' appearing in a text input field?
             This would indicate that keyboard input was successfully detected and displayed.
             Look for the text in the bottom portion of the LIMA Screen Reader window."""
@@ -541,7 +550,7 @@ class LimaTestExecutor:
             # ========================================
             # STEP 1: Take BEFORE screenshot
             # ========================================
-            print("  [1/5] Taking BEFORE screenshot...")
+            print("  Taking BEFORE screenshot...")
             before_screenshot = take_screenshot()
             if not before_screenshot:
                 print("  ! Could not capture before screenshot")
@@ -549,7 +558,7 @@ class LimaTestExecutor:
                 print("  OK BEFORE screenshot captured")
 
             # Open File menu, then navigate to the target item
-            print(f"  [2/5] Opening {test_name}...")
+            print(f"  Opening {test_name}...")
             try:
                 pyautogui.press('alt')
                 time.sleep(0.5)
@@ -565,7 +574,7 @@ class LimaTestExecutor:
             # ========================================
             # STEP 2: Take AFTER screenshot
             # ========================================
-            print("  [3/5] Taking AFTER screenshot...")
+            print("  Taking AFTER screenshot...")
             after_screenshot = take_screenshot()
             if not after_screenshot:
                 print("  ! Could not capture after screenshot")
@@ -596,7 +605,7 @@ class LimaTestExecutor:
             # ========================================
             # STEP 3: Verify with OpenRouter Gemini
             # ========================================
-            print("  [4/5] Verifying with OpenRouter Gemini model...")
+            print("  Verifying with OpenRouter Gemini model...")
             verification_result = verify_tool_with_screenshots(
                 before_screenshot=before_screenshot,
                 after_screenshot=after_screenshot,
@@ -612,7 +621,7 @@ class LimaTestExecutor:
                 return
 
             # Close the dialog
-            print(f"  [5/5] Closing {test_name}...")
+            print(f"  Closing {test_name}...")
             try:
                 pyautogui.press('escape')
             except Exception:
@@ -719,7 +728,7 @@ class LimaTestExecutor:
                 pass
             
             # Open About dialog
-            print("  [1/6] Opening About dialog to test links...")
+            print("  Opening About dialog to test links...")
             try:
                 pyautogui.press('alt')
                 time.sleep(0.5)
@@ -757,7 +766,7 @@ class LimaTestExecutor:
             # ========================================
             # STEP 1: Take BEFORE screenshot (About dialog open)
             # ========================================
-            print("  [2/6] Taking BEFORE screenshot (About dialog open)...")
+            print("  Taking BEFORE screenshot (About dialog open)...")
             before_screenshot = take_screenshot()
             if not before_screenshot:
                 print("  ! Could not capture before screenshot")
@@ -769,7 +778,7 @@ class LimaTestExecutor:
             # ========================================
             # Test 1: Activate "Roscommon Systems" website link via Tab + Enter
             # ========================================
-            print(f"  [3/6] Activating Website link via Tab + Enter...")
+            print(f"  Activating Website link via Tab + Enter...")
             try:
                 about_window.activate()
                 time.sleep(0.5)
@@ -781,7 +790,7 @@ class LimaTestExecutor:
                 # ========================================
                 # STEP 2: Take AFTER 1 screenshot (Website 1 open)
                 # ========================================
-                print("  [4/6] Taking AFTER 1 screenshot (Website 1 opened)...")
+                print("  Taking AFTER 1 screenshot (Website 1 opened)...")
                 after_screenshot_website = take_screenshot()
                 if not after_screenshot_website:
                     print("  ! Could not capture after screenshot for website 1")
@@ -833,7 +842,7 @@ class LimaTestExecutor:
             # ========================================
             # Test 2: Activate "LIMA Documentation" link via Tab + Enter
             # ========================================
-            print(f"  [5/6] Activating Documentation link via Tab + Enter...")
+            print(f"  Activating Documentation link via Tab + Enter...")
             try:
                 about_window.activate()
                 time.sleep(0.5)
@@ -845,7 +854,7 @@ class LimaTestExecutor:
                 # ========================================
                 # STEP 3: Take AFTER 2 screenshot (Website 2 open)
                 # ========================================
-                print("  [6/6] Taking AFTER 2 screenshot (Website 2 opened)...")
+                print("  Taking AFTER 2 screenshot (Website 2 opened)...")
                 after_screenshot_docs = take_screenshot()
                 if not after_screenshot_docs:
                     print("  ! Could not capture after screenshot for website 2")

@@ -36,9 +36,10 @@ def run_all_tool_tests(executor):
         ("OPEN WEBSITE", "open google.com", "AI Tool Test: Open Website", "browser_window", "Did a web browser window open showing Google or a website?"),
     ]
 
-    for test_name, command, result_name, verification_type, verification_prompt in tool_tests:
+    total = len(tool_tests)
+    for i, (test_name, command, result_name, verification_type, verification_prompt) in enumerate(tool_tests, start=1):
         print("\n" + "-" * 50)
-        print(f"TOOL TEST: {test_name}")
+        print(f"TOOL TEST {i}/{total}: {test_name}")
         print("-" * 50)
 
         try:
@@ -65,7 +66,7 @@ def run_all_tool_tests(executor):
             # Step 5: Take BEFORE screenshot (for visual verification)
             before_screenshot = None
             if verification_type != "no_verification":
-                print("  [1/4] Taking BEFORE screenshot...")
+                print("  Taking BEFORE screenshot...")
                 before_screenshot = take_screenshot()
                 if not before_screenshot:
                     print("  ! Could not capture before screenshot")
@@ -73,13 +74,13 @@ def run_all_tool_tests(executor):
                     print("  OK BEFORE screenshot captured")
 
             # Step 6: Type command
-            print(f"  [2/4] Executing tool: '{command}'")
+            print(f"  Executing tool: '{command}'")
             pyautogui.write(command, interval=0.2)
             time.sleep(1.0)
             print("  OK Command typed")
 
             # Step 7: Submit
-            print("  [3/4] Pressing Enter to submit...")
+            print("  Pressing Enter to submit...")
             pyautogui.press('enter')
             time.sleep(3.0)
 
@@ -102,7 +103,7 @@ def run_all_tool_tests(executor):
             # Step 9: Take AFTER screenshot (for visual verification)
             after_screenshot = None
             if verification_type != "no_verification":
-                print("  [4/4] Taking AFTER screenshot...")
+                print("  Taking AFTER screenshot...")
                 after_screenshot = take_screenshot()
                 if not after_screenshot:
                     print("  ! Could not capture after screenshot")
@@ -110,7 +111,7 @@ def run_all_tool_tests(executor):
                     print("  OK AFTER screenshot captured")
             elif verification_type == "content_verification":
                 # For weather and long content, take screenshot after response
-                print("  [4/4] Taking AFTER screenshot (after LIMA response)...")
+                print("  Taking AFTER screenshot (after LIMA response)...")
                 after_screenshot = take_screenshot()
                 if not after_screenshot:
                     print("  ! Could not capture after screenshot")
@@ -120,7 +121,7 @@ def run_all_tool_tests(executor):
             # Step 10: Verification using OpenRouter Gemini
             verification_result = None
             if verification_type != "no_verification" and before_screenshot and after_screenshot:
-                print("  [5/5] Verifying with OpenRouter Gemini model...")
+                print("  Verifying with OpenRouter Gemini model...")
                 verification_result = verify_tool_with_screenshots(
                     before_screenshot=before_screenshot,
                     after_screenshot=after_screenshot,
@@ -128,7 +129,7 @@ def run_all_tool_tests(executor):
                     verification_prompt=verification_prompt
                 )
             else:
-                print("  [5/5] No visual verification required")
+                print("  No visual verification required")
 
             # Step 11: Cleanup
             if "WINDOWS KEY" in test_name:

@@ -79,10 +79,21 @@ class LimaProcessManager:
                                 time.sleep(0.5)
                             except Exception:
                                 pass
-                            click_x = window.left + (window.width // 2)
-                            click_y = window.top + (window.height // 2)
-                            pyautogui.click(click_x, click_y)
-                            time.sleep(0.5)
+                            # Use Windows UI Automation to click the actual text input (Edit control)
+                            try:
+                                from pywinauto import Desktop
+                                desktop = Desktop(backend="uia")
+                                lima_app = desktop.window(title_re=".*LIMA Screen Reader.*")
+                                edit = lima_app.child_window(control_type="Edit")
+                                edit.set_focus()
+                                edit.click_input()
+                                time.sleep(0.3)
+                            except Exception:
+                                # Fallback: click near window bottom if UIA fails
+                                click_x = window.left + (window.width // 2)
+                                click_y = window.top + int(window.height * 0.88)
+                                pyautogui.click(click_x, click_y)
+                                time.sleep(0.3)
                             print(f"  OK LIMA refocused: '{window.title}'")
                             return True
                         except Exception:
