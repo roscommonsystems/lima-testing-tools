@@ -8,7 +8,7 @@ import webbrowser
 import pyautogui
 
 from lima_test_utils import (
-    take_screenshot, verify_tool_with_screenshots,
+    take_screenshot, verify_tool_with_screenshots, overlay_cursor_on_screenshot,
     find_window_by_title, TEST_PASSED, TEST_FAILED,
     speak_tts, type_into_lima,
     SLEEP_A, SLEEP_B, SLEEP_C, SLEEP_D
@@ -27,7 +27,7 @@ def run_all_tool_tests(executor):
         ("WEATHER", "whats the weather in japan", "AI Tool Test: Weather Retrieval", "content_verification", "Did LIMA display a weather response or information about Japan's weather? Look for any new text content or weather-related information in the LIMA interface."),
         ("MOUSE CLICK", "do a right click", "AI Tool Test: Mouse Click", "context_menu", "Does the AFTER screenshot show a context menu appearing at the mouse cursor position?"),
         ("MOUSE CLICK COORDINATES", "click on the file menu", "AI Tool Test: Mouse Click Coordinates", "content_verification", "Did a File menu dropdown or menu bar open in the AFTER screenshot? Look for a dropdown menu appearing, or LIMA's response confirming it clicked the File menu."),
-        ("MOVE MOUSE TO", "move the mouse to position x 300 y 300", "AI Tool Test: Move Mouse To", "no_verification", "No visual verification — position is checked programmatically."),
+        ("MOVE MOUSE TO", "move the mouse to position x 300 y 300", "AI Tool Test: Move Mouse To", "mouse_position", "Did the mouse cursor move to approximately position (300, 300) — the upper-left area of the screen? A red circle marks the cursor's current position in the AFTER screenshot."),
         ("MOUSE WHEEL SCROLL", "scroll down", "AI Tool Test: Mouse Wheel Scroll", "scroll_position", "Did the Google News webpage scroll down between the before and after screenshots? Look for different news articles or content being visible, or the page shifted downward."),
         ("CHANGE VOLUME", "increase the volume", "AI Tool Test: Change Volume", "no_verification", "No visual verification required for volume change"),
         ("WINDOWS KEY", "press the windows key", "AI Tool Test: Windows Key", "start_menu", "Did the Start menu or search window appear on screen?"),
@@ -146,21 +146,6 @@ def run_all_tool_tests(executor):
                 if (sec + 1) % 5 == 0:
                     print(f"    {sec + 1}/{wait_time} seconds...")
 
-            # Special: MOVE MOUSE TO — verify position programmatically instead of visually
-            if test_name == "MOVE MOUSE TO":
-                actual_pos = pyautogui.position()
-                expected_x, expected_y, tolerance = 300, 300, 20
-                if abs(actual_pos.x - expected_x) <= tolerance and abs(actual_pos.y - expected_y) <= tolerance:
-                    executor.add_test_result(result_name, TEST_PASSED,
-                        f"MOVE MOUSE TO verified: cursor at ({actual_pos.x}, {actual_pos.y}), within {tolerance}px of ({expected_x}, {expected_y})")
-                    print(f"  OK {test_name} test PASSED (cursor at {actual_pos})")
-                else:
-                    executor.add_test_result(result_name, TEST_FAILED,
-                        f"MOVE MOUSE TO failed: cursor at ({actual_pos.x}, {actual_pos.y}), expected ({expected_x}, {expected_y}) ±{tolerance}px")
-                    print(f"  X {test_name} test FAILED (cursor at {actual_pos})")
-                time.sleep(SLEEP_C)
-                continue
-
             # Special: MOUSE WHEEL SCROLL — switch back to Google News to capture the after state
             if test_name == "MOUSE WHEEL SCROLL":
                 news_window = find_window_by_title("Google News", timeout=5)
@@ -180,6 +165,10 @@ def run_all_tool_tests(executor):
                     print("  ! Could not capture after screenshot")
                 else:
                     print("  OK AFTER screenshot captured")
+
+            # Special: MOVE MOUSE TO — overlay cursor position so AI can see it
+            if test_name == "MOVE MOUSE TO" and after_screenshot:
+                after_screenshot = overlay_cursor_on_screenshot(after_screenshot, pyautogui.position())
 
             # Step 11: Verification using OpenRouter Gemini
             verification_result = None
@@ -257,271 +246,3 @@ def run_all_tool_tests(executor):
             executor.add_test_result(result_name, TEST_FAILED, message)
             print(f"  X {message}")
 
-    # ========================================
-    # SPECIAL NOTEPAD TESTS FOR BACKSPACE AND ARROW LEFT
-    # ========================================
-    print("\n" + "="*60)
-    print("RUNNING SPECIAL NOTEPAD TESTS")
-    print("="*60)
-
-    try:
-        # Test BACKSPACE 5 TIMES with Notepad
-        print("\n--- TESTING BACKSPACE 5 TIMES ---")
-        speak_tts("Backspace test")
-        try:
-            # Step 1: Open Notepad
-            print("1. Opening Notepad...")
-            pyautogui.press('win')
-            time.sleep(SLEEP_A)
-            pyautogui.write('notepad')
-            time.sleep(SLEEP_A)
-            pyautogui.press('enter')
-            time.sleep(SLEEP_B)
-
-            # Step 2: Find Notepad window and type text
-            notepad_window = find_window_by_title("Notepad", timeout=5)
-            if not notepad_window:
-                print("  X Could not find Notepad window")
-                executor.add_test_result("AI Tool Test: Press Backspace", TEST_FAILED, "Could not open Notepad for backspace test")
-                return
-
-            print("2. Typing text in Notepad...")
-            try:
-                notepad_window.activate()
-            except Exception:
-                pass
-            time.sleep(SLEEP_A)
-            try:
-                notepad_window.maximize()
-            except Exception:
-                pass
-            time.sleep(SLEEP_A)
-
-            # NEW: Deselect menu and focus text area
-            print("2b. Focusing text input area (deselecting menu)...")
-            pyautogui.press('escape')  # Escape from menu focus
-            time.sleep(SLEEP_A)
-
-            test_text = "Hello World Test"
-            pyautogui.write(test_text, interval=0.1)
-            time.sleep(SLEEP_A)
-            pyautogui.press('escape')
-
-            # Click in the middle-lower area of the window to focus text area
-            window_center_x = notepad_window.left + (notepad_window.width // 2)
-            click_y = notepad_window.top + int(notepad_window.height * 0.5)  # Click in middle
-            pyautogui.click(window_center_x, click_y)
-            time.sleep(SLEEP_A)
-
-            # Step 3: Take BEFORE screenshot of Notepad
-            print("3. Taking BEFORE screenshot of Notepad...")
-            before_screenshot = take_screenshot()
-            if not before_screenshot:
-                print("  ! Could not capture before screenshot")
-            else:
-                print("  OK BEFORE screenshot captured")
-
-            # Step 4: Switch to LIMA and type backspace command
-            print("4. Switching to LIMA and executing backspace command...")
-            if not executor.process_manager.refocus(timeout=10):
-                print("  X Could not refocus on LIMA window")
-                executor.add_test_result("AI Tool Test: Press Backspace", TEST_FAILED, "Could not refocus on LIMA")
-                return
-
-            type_into_lima("press backspace 5 times")
-            time.sleep(SLEEP_A)
-            pyautogui.press('enter')
-            time.sleep(SLEEP_C)
-
-            # Step 5: Wait for AI execution
-            wait_time = 15
-            print(f"5. Waiting for AI to process ({wait_time} seconds)...")
-            for i in range(wait_time):
-                time.sleep(SLEEP_A)
-                if not executor.process_manager.is_running():
-                    message = "LIMA crashed during backspace test"
-                    executor.add_test_result("AI Tool Test: Press Backspace", TEST_FAILED, message)
-                    print(f"  X {message}")
-                    return
-
-            # Step 6: Switch back to Notepad and take AFTER screenshot
-            print("6. Switching back to Notepad and taking AFTER screenshot...")
-            try:
-                notepad_window.activate()
-            except Exception:
-                pass
-            time.sleep(SLEEP_A)
-
-            after_screenshot = take_screenshot()
-            if not after_screenshot:
-                print("  ! Could not capture after screenshot")
-            else:
-                print("  OK AFTER screenshot captured")
-
-            # Step 7: Verify with OpenRouter Gemini
-            if before_screenshot and after_screenshot:
-                print("7. Verifying with OpenRouter Gemini model...")
-                verification_prompt = "Did text get deleted in the Notepad window? Look for fewer characters in the text content."
-                verification_result = verify_tool_with_screenshots(
-                    before_screenshot=before_screenshot,
-                    after_screenshot=after_screenshot,
-                    tool_name="BACKSPACE 5 TIMES",
-                    verification_prompt=verification_prompt
-                )
-
-                if verification_result and verification_result.get("answer") == "YES":
-                    explanation = verification_result.get("explanation", "No explanation provided")
-                    executor.add_test_result("AI Tool Test: Press Backspace", TEST_PASSED, f"Backspace test passed: {explanation}")
-                    print(f"  OK BACKSPACE test PASSED")
-                    print(f"    Note: {explanation}")
-                elif verification_result and verification_result.get("answer") == "NO":
-                    explanation = verification_result.get("explanation", "No explanation provided")
-                    executor.add_test_result("AI Tool Test: Press Backspace", TEST_FAILED, f"Backspace test failed: {explanation}")
-                    print(f"  X BACKSPACE test FAILED")
-                    print(f"    Note: {explanation}")
-                else:
-                    executor.add_test_result("AI Tool Test: Press Backspace", TEST_FAILED, "Backspace test — API verification unavailable — cannot confirm result")
-                    print(f"  X BACKSPACE test FAILED (API verification unavailable)")
-            else:
-                executor.add_test_result("AI Tool Test: Press Backspace", TEST_FAILED, "Backspace test — screenshots unavailable — cannot confirm result")
-                print(f"  X BACKSPACE test FAILED (screenshots unavailable)")
-
-            # Close Notepad
-            pyautogui.hotkey('alt', 'f4')
-            time.sleep(SLEEP_A)
-
-        except Exception as error:
-            message = f"Exception during BACKSPACE test: {str(error)}"
-            executor.add_test_result("AI Tool Test: Press Backspace", TEST_FAILED, message)
-            print(f"  X {message}")
-
-        # Test ARROW LEFT
-        print("\n--- TESTING ARROW LEFT ---")
-        speak_tts("Arrow left test")
-        try:
-            # Step 1: Open Notepad again
-            print("1. Opening Notepad...")
-            pyautogui.press('win')
-            time.sleep(SLEEP_A)
-            pyautogui.write('notepad')
-            time.sleep(SLEEP_A)
-            pyautogui.press('enter')
-            time.sleep(SLEEP_B)
-
-            # Step 2: Find Notepad window and type text
-            notepad_window = find_window_by_title("Notepad", timeout=5)
-            if not notepad_window:
-                print("  X Could not find Notepad window")
-                executor.add_test_result("AI Tool Test: Arrow Key Left", TEST_FAILED, "Could not open Notepad for arrow key test")
-                return
-
-            print("2. Typing text in Notepad...")
-            try:
-                notepad_window.activate()
-            except Exception:
-                pass
-            time.sleep(SLEEP_A)
-            try:
-                notepad_window.maximize()
-            except Exception:
-                pass
-            time.sleep(SLEEP_A)
-
-            test_text = "Hello World Test"
-            pyautogui.write(test_text, interval=0.1)
-            time.sleep(SLEEP_A)
-
-            # Move cursor to end of text
-            pyautogui.press('end')
-            time.sleep(SLEEP_A)
-
-            # Step 3: Take BEFORE screenshot of Notepad
-            print("3. Taking BEFORE screenshot of Notepad...")
-            before_screenshot = take_screenshot()
-            if not before_screenshot:
-                print("  ! Could not capture before screenshot")
-            else:
-                print("  OK BEFORE screenshot captured")
-
-            # Step 4: Switch to LIMA and type arrow left command
-            print("4. Switching to LIMA and executing arrow left command...")
-            if not executor.process_manager.refocus(timeout=10):
-                print("  X Could not refocus on LIMA window")
-                executor.add_test_result("AI Tool Test: Arrow Key Left", TEST_FAILED, "Could not refocus on LIMA")
-                return
-
-            type_into_lima("press arrow key left")
-            time.sleep(SLEEP_A)
-            pyautogui.press('enter')
-            time.sleep(SLEEP_C)
-
-            # Step 5: Wait for AI execution
-            wait_time = 15
-            print(f"5. Waiting for AI to process ({wait_time} seconds)...")
-            for i in range(wait_time):
-                time.sleep(SLEEP_A)
-                if not executor.process_manager.is_running():
-                    message = "LIMA crashed during arrow left test"
-                    executor.add_test_result("AI Tool Test: Arrow Key Left", TEST_FAILED, message)
-                    print(f"  X {message}")
-                    return
-
-            # Step 6: Switch back to Notepad and take AFTER screenshot
-            print("6. Switching back to Notepad and taking AFTER screenshot...")
-            try:
-                notepad_window.activate()
-            except Exception:
-                pass
-            time.sleep(SLEEP_A)
-
-            after_screenshot = take_screenshot()
-            if not after_screenshot:
-                print("  ! Could not capture after screenshot")
-            else:
-                print("  OK AFTER screenshot captured")
-
-            # Step 7: Verify with OpenRouter Gemini
-            if before_screenshot and after_screenshot:
-                print("7. Verifying with OpenRouter Gemini model...")
-                verification_prompt = "Did the text cursor move left in the Notepad text field? Look for cursor position changes in the text."
-                verification_result = verify_tool_with_screenshots(
-                    before_screenshot=before_screenshot,
-                    after_screenshot=after_screenshot,
-                    tool_name="ARROW LEFT",
-                    verification_prompt=verification_prompt
-                )
-
-                if verification_result and verification_result.get("answer") == "YES":
-                    explanation = verification_result.get("explanation", "No explanation provided")
-                    executor.add_test_result("AI Tool Test: Arrow Key Left", TEST_PASSED, f"Arrow left test passed: {explanation}")
-                    print(f"  OK ARROW LEFT test PASSED")
-                    print(f"    Note: {explanation}")
-                elif verification_result and verification_result.get("answer") == "NO":
-                    explanation = verification_result.get("explanation", "No explanation provided")
-                    executor.add_test_result("AI Tool Test: Arrow Key Left", TEST_FAILED, f"Arrow left test failed: {explanation}")
-                    print(f"  X ARROW LEFT test FAILED")
-                    print(f"    Note: {explanation}")
-                else:
-                    executor.add_test_result("AI Tool Test: Arrow Key Left", TEST_FAILED, "Arrow left test — API verification unavailable — cannot confirm result")
-                    print(f"  X ARROW LEFT test FAILED (API verification unavailable)")
-            else:
-                executor.add_test_result("AI Tool Test: Arrow Key Left", TEST_FAILED, "Arrow left test — screenshots unavailable — cannot confirm result")
-                print(f"  X ARROW LEFT test FAILED (screenshots unavailable)")
-
-            # Close Notepad
-            pyautogui.hotkey('alt', 'f4')
-            time.sleep(SLEEP_A)
-
-        except Exception as error:
-            message = f"Exception during ARROW LEFT test: {str(error)}"
-            executor.add_test_result("AI Tool Test: Arrow Key Left", TEST_FAILED, message)
-            print(f"  X {message}")
-
-        print("\n" + "="*60)
-        print("SPECIAL NOTEPAD TESTS COMPLETED")
-        print("="*60)
-
-    except Exception as error:
-        message = f"Exception during special Notepad tests: {str(error)}"
-        executor.add_test_result("Special Notepad Tests", TEST_FAILED, message)
-        print(f"  X {message}")

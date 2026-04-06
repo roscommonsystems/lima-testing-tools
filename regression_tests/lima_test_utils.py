@@ -349,6 +349,19 @@ def check_crash_logs(lima_install_path):
     return {"exists": False}
 
 
+def overlay_cursor_on_screenshot(screenshot, cursor_pos):
+    """Draw a red circle and crosshairs at the cursor position so the AI can see it."""
+    from PIL import ImageDraw
+    img = screenshot.copy()
+    draw = ImageDraw.Draw(img)
+    x, y = cursor_pos.x, cursor_pos.y
+    r = 20
+    draw.ellipse([x - r, y - r, x + r, y + r], outline="red", width=3)
+    draw.line([x - r - 5, y, x + r + 5, y], fill="red", width=2)
+    draw.line([x, y - r - 5, x, y + r + 5], fill="red", width=2)
+    return img
+
+
 def take_screenshot():
     """
     Take a screenshot of the current screen.
