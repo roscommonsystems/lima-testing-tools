@@ -27,7 +27,6 @@ def main():
 
     executor = LimaTestExecutor()
     success = executor.run_tests()
-    executor.print_summary()
 
     # Save report to JSON
     report_path = os.path.join(regression_tests_dir, "test_results.json")

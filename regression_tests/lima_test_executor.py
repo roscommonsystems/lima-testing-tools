@@ -46,9 +46,13 @@ class LimaTestExecutor:
     # ========================================
 
     def _msgbox(self, title, message, error=False):
-        """Show a Windows message box. MB_ICONERROR=0x10, MB_ICONINFORMATION=0x40."""
+        """Show a Windows message box. MB_ICONERROR=0x10, MB_ICONINFORMATION=0x40.
+        MB_SYSTEMMODAL|MB_TOPMOST|MB_SETFOREGROUND force the dialog to the front
+        so it doesn't hide behind the test console."""
         icon = 0x10 if error else 0x40
-        ctypes.windll.user32.MessageBoxW(0, message, title, icon)
+        flags = icon | 0x1000 | 0x40000 | 0x10000
+        sys.stdout.flush()
+        ctypes.windll.user32.MessageBoxW(0, message, title, flags)
 
     # ========================================
     # Main Test Runner
@@ -159,6 +163,7 @@ class LimaTestExecutor:
         tests = self.reporter.test_results["tests"]
         total_tests = len(tests)
         failures = sum(1 for t in tests if t.get("status") == TEST_FAILED)
+        self.print_summary()
         if passed:
             self._msgbox("LIMA Tests Complete", f"All {total_tests} tests passed.")
         else:
