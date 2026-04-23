@@ -8,7 +8,6 @@ import os
 import sys
 import time
 import pyautogui
-import pygetwindow as gw
 
 from lima_test_utils import *
 from lima_test_reporter import LimaTestReporter
@@ -107,34 +106,11 @@ class LimaTestExecutor:
             
             # Test 5: Monitor stability
             self._test_stability_monitoring()
-            
-            # Test 6: Test Settings dialog
-            self._test_settings_dialog()
-            
-            # Test 7: Test About dialog
-            self._test_about_dialog()
 
-            # Test 8: Close LIMA and reopen for next test
-            close_error = self.process_manager.close()
-            if close_error:
-                self.add_error(close_error)
-            time.sleep(SLEEP_B)
-            
-            # Test 9: Re-launch LIMA for subscription test
-            if not self._test_lima_launch():
-                self.reporter.finalize_results()
-                self._msgbox("LIMA Tests Aborted", "LIMA failed to re-launch for subscription test.", error=True)
-                return False
-            
-            time.sleep(SLEEP_B)
-            
-            # Test 10: Test Subscription Information dialog
-            self._test_subscription_dialog()
-
-            # Test 10b: Verify LIMA actually produces audio (catches empty-TTS bug)
+            # Test 6: Verify LIMA actually produces audio (catches empty-TTS bug)
             self._test_audio_output()
 
-            # Test 11: Close for tool tests
+            # Test 7: Close for tool tests
             close_error = self.process_manager.close()
             if close_error:
                 self.add_error(close_error)
@@ -151,7 +127,7 @@ class LimaTestExecutor:
                 self.add_error(close_error)
             time.sleep(SLEEP_C)
 
-            # Test 12: Check for crash logs after run
+            # Test 8: Check for crash logs after run
             self._test_postrun_crash_logs()
 
             
@@ -358,205 +334,6 @@ class LimaTestExecutor:
         except Exception as error:
             message = f"Exception during settings file persistence test: {str(error)}"
             self.add_test_result("Settings File Persistence Test", TEST_FAILED, message)
-    
-    def _test_dialog(self, test_name, result_name, menu_nav_keys, dialog_title_keywords, verify_prompt):
-        """
-        Shared helper for testing dialogs opened from the LIMA File menu.
-
-        Opens a dialog via menu navigation, verifies it appeared with AI screenshot
-        comparison, then closes it.
-
-        Args:
-            test_name: Display name for print output (e.g. "Settings Dialog")
-            result_name: Name used in test result recording (e.g. "Settings Dialog Test")
-            menu_nav_keys: Keys to press after opening the menu to reach the item
-                           (e.g. ['enter'] for Settings, ['down', 'enter'] for Subscription)
-            dialog_title_keywords: Window title substrings to match when searching for the dialog
-            verify_prompt: AI verification prompt describing what to look for
-        """
-        speak_tts(f"{test_name} test")
-        try:
-            # Find LIMA window
-            lima_window = None
-            all_windows = gw.getAllWindows()
-            for window in all_windows:
-                if window.title == "LIMA Screen Reader":
-                    lima_window = window
-                    break
-            if not lima_window:
-                lima_window = find_window_by_title("LIMA Screen Reader", timeout=5)
-            if not lima_window:
-                message = f"Could not find LIMA Screen Reader window to open {test_name}"
-                self.add_test_result(result_name, TEST_FAILED, message)
-                self.add_error(f"LIMA window not found during {test_name}")
-                return
-
-            # Clear any stuck menus, then activate and focus
-            try:
-                pyautogui.press('escape')
-                time.sleep(SLEEP_A)
-                lima_window.activate()
-                time.sleep(SLEEP_A)
-                lima_window.maximize()
-                time.sleep(SLEEP_A)
-            except Exception:
-                pass
-            try:
-                pyautogui.click(lima_window.left + 200, lima_window.top + 200)
-                time.sleep(SLEEP_A)
-            except Exception:
-                pass
-
-            # ========================================
-            # STEP 1: Take BEFORE screenshot
-            # ========================================
-            print("  Taking BEFORE screenshot...")
-            before_screenshot = take_screenshot()
-            if not before_screenshot:
-                print("  ! Could not capture before screenshot")
-            else:
-                print("  OK BEFORE screenshot captured")
-
-            # Open File menu, then navigate to the target item
-            print(f"  Opening {test_name}...")
-            try:
-                pyautogui.press('alt')
-                time.sleep(SLEEP_A)
-                pyautogui.press('enter')
-                time.sleep(SLEEP_B)
-                for key in menu_nav_keys:
-                    pyautogui.press(key)
-                    time.sleep(SLEEP_A)
-                time.sleep(SLEEP_C)
-            except Exception:
-                pass
-
-            # ========================================
-            # STEP 2: Take AFTER screenshot
-            # ========================================
-            print("  Taking AFTER screenshot...")
-            after_screenshot = take_screenshot()
-            if not after_screenshot:
-                print("  ! Could not capture after screenshot")
-            else:
-                print("  OK AFTER screenshot captured")
-
-            # Search for the dialog window
-            print(f"  Searching for {test_name} window...")
-            dialog_window = None
-            for attempt in range(10):
-                all_windows = gw.getAllWindows()
-                if attempt == 0:
-                    print("    Current windows:")
-                    for w in all_windows:
-                        if w.title.strip():
-                            print(f"      - '{w.title}'")
-                for window in all_windows:
-                    if any(kw in window.title for kw in dialog_title_keywords):
-                        dialog_window = window
-                        print(f"  OK Found dialog: '{window.title}'")
-                        break
-                if dialog_window:
-                    break
-                if attempt % 2 == 0:
-                    print(f"    Attempt {attempt + 1}/10 - {test_name} not found yet...")
-                time.sleep(SLEEP_A)
-
-            # ========================================
-            # STEP 3: Verify with OpenRouter Gemini
-            # ========================================
-            print("  Verifying with OpenRouter Gemini model...")
-            verification_result = verify_tool_with_screenshots(
-                before_screenshot=before_screenshot,
-                after_screenshot=after_screenshot,
-                tool_name=test_name,
-                verification_prompt=verify_prompt
-            )
-
-            if not dialog_window:
-                message = f"{test_name} did not appear within timeout — menu navigation failed"
-                self.add_test_result(result_name, TEST_FAILED, message)
-                self.add_error(f"{test_name} window not found after menu click")
-                print(f"  X {test_name} FAILED - dialog did not open")
-                return
-
-            # Close the dialog
-            print(f"  Closing {test_name}...")
-            try:
-                pyautogui.press('escape')
-            except Exception:
-                pass
-            time.sleep(SLEEP_A)
-
-            if not self.process_manager.is_running():
-                message = f"LIMA crashed after closing {test_name}"
-                self.add_test_result(result_name, TEST_FAILED, message)
-                self.add_error(f"LIMA crashed after {test_name}")
-                return
-
-            # Process verification result
-            if verification_result and verification_result.get("answer") == "YES":
-                explanation = verification_result.get("explanation", "No explanation provided")
-                message = f"{test_name} opened and verified: {explanation}"
-                self.add_test_result(result_name, TEST_PASSED, message)
-                print(f"  OK {test_name.upper()} test PASSED")
-                print(f"    Note: {explanation}")
-            elif verification_result and verification_result.get("answer") == "NO":
-                explanation = verification_result.get("explanation", "No explanation provided")
-                message = f"{test_name} verification failed: {explanation}"
-                self.add_test_result(result_name, TEST_FAILED, message)
-                print(f"  X {test_name.upper()} test FAILED")
-                print(f"    Note: {explanation}")
-            else:
-                message = f"{test_name} — API verification unavailable — cannot confirm result"
-                self.add_test_result(result_name, TEST_FAILED, message)
-                print(f"  X {test_name.upper()} test FAILED (API verification unavailable)")
-
-        except Exception as error:
-            message = f"Exception during {test_name}: {str(error)}"
-            self.add_test_result(result_name, TEST_FAILED, message)
-            self.add_error(f"{test_name} exception: {str(error)}")
-
-    def _test_settings_dialog(self):
-        """Test: Open Settings dialog from File menu and verify it displays correctly."""
-        self._test_dialog(
-            test_name="Settings Dialog",
-            result_name="Settings Dialog Test",
-            menu_nav_keys=['enter'],  # Settings is the first item in the File menu
-            dialog_title_keywords=["LIMA Settings", "Settings"],
-            verify_prompt=(
-                "Does the AFTER screenshot show a Settings dialog window appearing on screen? "
-                "Look for a dialog box with settings options (like preferences, options, configuration) "
-                "that was not present in the BEFORE screenshot."
-            )
-        )
-
-    def _test_subscription_dialog(self):
-        """Test: Open Subscription Information dialog from File menu and verify it displays correctly."""
-        self._test_dialog(
-            test_name="Subscription Dialog",
-            result_name="Subscription Dialog Test",
-            menu_nav_keys=['down', 'enter'],  # Down past Settings, then enter
-            dialog_title_keywords=["Subscription Information", "Subscription"],
-            verify_prompt=(
-                "Does the AFTER screenshot show a Subscription Information dialog window appearing on screen? "
-                "Look for a dialog box with subscription-related information that was not present in the BEFORE screenshot."
-            )
-        )
-
-    def _test_about_dialog(self):
-        """Test: Open About dialog from File menu and verify it displays correctly."""
-        self._test_dialog(
-            test_name="About Dialog",
-            result_name="About Dialog Test",
-            menu_nav_keys=['down', 'down', 'enter'],  # Down past Settings, down past Subscription, then enter
-            dialog_title_keywords=["About LIMA", "About"],
-            verify_prompt=(
-                "Does the AFTER screenshot show an About LIMA dialog window appearing on screen? "
-                "Look for a dialog box with About information (version, copyright, etc.) "
-                "that was not present in the BEFORE screenshot."
-            )
-        )
     
     def _test_audio_output(self):
         """

@@ -5,6 +5,7 @@ Contains run_all_tool_tests for testing LIMA AI tools in a single session.
 
 import time
 import webbrowser
+import pygetwindow as gw
 import pyautogui
 
 from lima_test_utils import (
@@ -21,26 +22,69 @@ def run_all_tool_tests(executor):
     print("TESTING ALL LIMA AI TOOLS")
     print("=" * 60)
 
-    # (test_name, command, result_name, verification_type, verification_prompt)
     tool_tests = [
-        ("TYPE TEXT", "Type hello", "AI Tool Test: Type Text", "text_input", "Does the AFTER screenshot show the text 'hello' appearing in a text input field?"),
-        ("WEATHER", "whats the weather in japan", "AI Tool Test: Weather Retrieval", "content_verification", "Did LIMA display a weather response or information about Japan's weather? Look for any new text content or weather-related information in the LIMA interface."),
-        ("MOUSE CLICK", "do a right click", "AI Tool Test: Mouse Click", "context_menu", "Does the AFTER screenshot show a context menu appearing at the mouse cursor position?"),
-        ("MOUSE CLICK COORDINATES", "click on the file menu", "AI Tool Test: Mouse Click Coordinates", "content_verification", "Did a File menu dropdown or menu bar open in the AFTER screenshot? Look for a dropdown menu appearing, or LIMA's response confirming it clicked the File menu."),
-        ("MOVE MOUSE TO", "move the mouse to position x 300 y 300", "AI Tool Test: Move Mouse To", "mouse_position", "Did the mouse cursor move to approximately position (300, 300) — the upper-left area of the screen? A red circle marks the cursor's current position in the AFTER screenshot."),
-        ("MOUSE WHEEL SCROLL", "scroll down", "AI Tool Test: Mouse Wheel Scroll", "scroll_position", "Did the Google News webpage scroll down between the before and after screenshots? Look for different news articles or content being visible, or the page shifted downward."),
-        ("CHANGE VOLUME", "increase the volume", "AI Tool Test: Change Volume", "no_verification", "No visual verification required for volume change"),
-        ("WINDOWS KEY", "press the windows key", "AI Tool Test: Windows Key", "start_menu", "Did the Start menu or search window appear on screen?"),
-        ("SHOW DESKTOP", "show the desktop", "AI Tool Test: Show Desktop", "desktop", "Are all application windows minimized and the desktop visible?"),
-        ("TYPE NUMBERS", "type any number", "AI Tool Test: Type Number", "text_input", "Does the AFTER screenshot show numbers appearing in a text input field?"),
-        ("OPEN NOTEPAD", "open notepad", "AI Tool Test: Open Notepad", "window_appearance", "Did a Notepad window appear on screen?"),
-        ("MINIMIZE WINDOW", "minimize window", "AI Tool Test: Minimize Window", "window_state", "Did the active window minimize to the taskbar?"),
-        ("MAXIMIZE WINDOW", "maximize window", "AI Tool Test: Maximize Window", "window_state", "Did the active window maximize to fill the screen?"),
-        ("OPEN WEBSITE", "open google.com", "AI Tool Test: Open Website", "browser_window", "Did a web browser window open showing Google or a website?"),
+        {
+            "kind": "dialog",
+            "name": "SETTINGS DIALOG",
+            "result_name": "Settings Dialog Test",
+            "verification_type": "dialog",
+            "verification_prompt": (
+                "Does the AFTER screenshot show a Settings dialog window appearing on screen? "
+                "Look for a dialog box with settings options (like preferences, options, configuration) "
+                "that was not present in the BEFORE screenshot."
+            ),
+            "menu_nav_keys": ["enter"],
+            "dialog_title_keywords": ["LIMA Settings", "Settings"],
+        },
+        {
+            "kind": "dialog",
+            "name": "ABOUT DIALOG",
+            "result_name": "About Dialog Test",
+            "verification_type": "dialog",
+            "verification_prompt": (
+                "Does the AFTER screenshot show an About LIMA dialog window appearing on screen? "
+                "Look for a dialog box with About information (version, copyright, etc.) "
+                "that was not present in the BEFORE screenshot."
+            ),
+            "menu_nav_keys": ["down", "down", "enter"],
+            "dialog_title_keywords": ["About LIMA", "About"],
+        },
+        {
+            "kind": "dialog",
+            "name": "SUBSCRIPTION DIALOG",
+            "result_name": "Subscription Dialog Test",
+            "verification_type": "dialog",
+            "verification_prompt": (
+                "Does the AFTER screenshot show a Subscription Information dialog window appearing on screen? "
+                "Look for a dialog box with subscription-related information that was not present in the BEFORE screenshot."
+            ),
+            "menu_nav_keys": ["down", "enter"],
+            "dialog_title_keywords": ["Subscription Information", "Subscription"],
+        },
+        {"kind": "command", "name": "TYPE TEXT", "command": "Type hello", "result_name": "AI Tool Test: Type Text", "verification_type": "text_input", "verification_prompt": "Does the AFTER screenshot show the text 'hello' appearing in a text input field?"},
+        {"kind": "command", "name": "WEATHER", "command": "whats the weather in japan", "result_name": "AI Tool Test: Weather Retrieval", "verification_type": "content_verification", "verification_prompt": "Did LIMA display a weather response or information about Japan's weather? Look for any new text content or weather-related information in the LIMA interface."},
+        {"kind": "command", "name": "MOUSE CLICK", "command": "do a right click", "result_name": "AI Tool Test: Mouse Click", "verification_type": "context_menu", "verification_prompt": "Does the AFTER screenshot show a context menu appearing at the mouse cursor position?"},
+        {"kind": "command", "name": "MOUSE CLICK COORDINATES", "command": "click on the file menu", "result_name": "AI Tool Test: Mouse Click Coordinates", "verification_type": "content_verification", "verification_prompt": "Did a File menu dropdown or menu bar open in the AFTER screenshot? Look for a dropdown menu appearing, or LIMA's response confirming it clicked the File menu."},
+        {"kind": "command", "name": "MOVE MOUSE TO", "command": "move the mouse to position x 300 y 300", "result_name": "AI Tool Test: Move Mouse To", "verification_type": "mouse_position", "verification_prompt": "Did the mouse cursor move to approximately position (300, 300) — the upper-left area of the screen? A red circle marks the cursor's current position in the AFTER screenshot."},
+        {"kind": "command", "name": "MOUSE WHEEL SCROLL", "command": "scroll down", "result_name": "AI Tool Test: Mouse Wheel Scroll", "verification_type": "scroll_position", "verification_prompt": "Did the Google News webpage scroll down between the before and after screenshots? Look for different news articles or content being visible, or the page shifted downward."},
+        {"kind": "command", "name": "CHANGE VOLUME", "command": "increase the volume", "result_name": "AI Tool Test: Change Volume", "verification_type": "no_verification", "verification_prompt": "No visual verification required for volume change"},
+        {"kind": "command", "name": "WINDOWS KEY", "command": "press the windows key", "result_name": "AI Tool Test: Windows Key", "verification_type": "start_menu", "verification_prompt": "Did the Start menu or search window appear on screen?"},
+        {"kind": "command", "name": "SHOW DESKTOP", "command": "show the desktop", "result_name": "AI Tool Test: Show Desktop", "verification_type": "desktop", "verification_prompt": "Are all application windows minimized and the desktop visible?"},
+        {"kind": "command", "name": "TYPE NUMBERS", "command": "type any number", "result_name": "AI Tool Test: Type Number", "verification_type": "text_input", "verification_prompt": "Does the AFTER screenshot show numbers appearing in a text input field?"},
+        {"kind": "command", "name": "OPEN NOTEPAD", "command": "open notepad", "result_name": "AI Tool Test: Open Notepad", "verification_type": "window_appearance", "verification_prompt": "Did a Notepad window appear on screen?"},
+        {"kind": "command", "name": "MINIMIZE WINDOW", "command": "minimize window", "result_name": "AI Tool Test: Minimize Window", "verification_type": "window_state", "verification_prompt": "Did the active window minimize to the taskbar?"},
+        {"kind": "command", "name": "MAXIMIZE WINDOW", "command": "maximize window", "result_name": "AI Tool Test: Maximize Window", "verification_type": "window_state", "verification_prompt": "Did the active window maximize to fill the screen?"},
+        {"kind": "command", "name": "OPEN WEBSITE", "command": "open google.com", "result_name": "AI Tool Test: Open Website", "verification_type": "browser_window", "verification_prompt": "Did a web browser window open showing Google or a website?"},
     ]
 
     total = len(tool_tests)
-    for i, (test_name, command, result_name, verification_type, verification_prompt) in enumerate(tool_tests, start=1):
+    for i, test in enumerate(tool_tests, start=1):
+        kind = test["kind"]
+        test_name = test["name"]
+        result_name = test["result_name"]
+        verification_type = test["verification_type"]
+        verification_prompt = test["verification_prompt"]
+
         print("\n" + "-" * 50)
         print(f"TOOL TEST {i}/{total}: {test_name}")
         print("-" * 50)
@@ -81,22 +125,23 @@ def run_all_tool_tests(executor):
             mouse_before = pyautogui.position()
             print(f"  Mouse position before: {mouse_before}")
 
-            # Special pre-screenshot setup
-            if test_name == "MAXIMIZE WINDOW":
-                # Restore so we can actually verify that maximize works
-                pyautogui.hotkey('win', 'down')
-                time.sleep(SLEEP_B)
-            elif test_name == "MOUSE WHEEL SCROLL":
-                # Open Google News (reliably long and scrollable) and wait for it to load
-                webbrowser.open("https://news.google.com")
-                time.sleep(SLEEP_D)
-                news_window = find_window_by_title("Google News", timeout=15)
-                if news_window:
-                    try:
-                        news_window.activate()
-                    except Exception:
-                        pass
+            # Special pre-screenshot setup (command tests only)
+            if kind == "command":
+                if test_name == "MAXIMIZE WINDOW":
+                    # Restore so we can actually verify that maximize works
+                    pyautogui.hotkey('win', 'down')
                     time.sleep(SLEEP_B)
+                elif test_name == "MOUSE WHEEL SCROLL":
+                    # Open Google News (reliably long and scrollable) and wait for it to load
+                    webbrowser.open("https://news.google.com")
+                    time.sleep(SLEEP_D)
+                    news_window = find_window_by_title("Google News", timeout=15)
+                    if news_window:
+                        try:
+                            news_window.activate()
+                        except Exception:
+                            pass
+                        time.sleep(SLEEP_B)
 
             # Step 6: Take BEFORE screenshot (for visual verification)
             before_screenshot = None
@@ -108,53 +153,66 @@ def run_all_tool_tests(executor):
                 else:
                     print("  OK BEFORE screenshot captured")
 
-            # Step 7: Type command directly into LIMA's text input
-            print(f"  Executing tool: '{command}'")
-            type_into_lima(command)
-            time.sleep(SLEEP_A)
-            print("  OK Command typed")
+            # Step 7: Action — either type a LIMA command or open a File-menu dialog
+            dialog_window = None
+            if kind == "command":
+                print(f"  Executing tool: '{test['command']}'")
+                type_into_lima(test["command"])
+                time.sleep(SLEEP_A)
+                print("  OK Command typed")
 
-            # Step 8: Submit
-            print("  Pressing Enter to submit...")
-            pyautogui.press('enter')
+                # Step 8: Submit
+                print("  Pressing Enter to submit...")
+                pyautogui.press('enter')
 
-            # Special: immediately focus Google News after submit so LIMA scrolls it, not itself
-            if test_name == "MOUSE WHEEL SCROLL":
-                news_window = find_window_by_title("Google News", timeout=5)
-                if news_window:
-                    try:
-                        news_window.activate()
-                    except Exception:
-                        pass
+                # Special: immediately focus Google News after submit so LIMA scrolls it, not itself
+                if test_name == "MOUSE WHEEL SCROLL":
+                    news_window = find_window_by_title("Google News", timeout=5)
+                    if news_window:
+                        try:
+                            news_window.activate()
+                        except Exception:
+                            pass
+                        time.sleep(SLEEP_A)
+
+                time.sleep(SLEEP_C)
+
+                # Step 9: Wait for AI execution
+                wait_time = 30
+                print(f"  Waiting for AI to process ({wait_time} seconds)...")
+
+                for sec in range(wait_time):
                     time.sleep(SLEEP_A)
 
-            time.sleep(SLEEP_C)
+                    if not executor.process_manager.is_running():
+                        message = f"LIMA crashed during {test_name}"
+                        executor.add_test_result(result_name, TEST_FAILED, message)
+                        print(f"  X {message}")
+                        return
 
-            # Step 9: Wait for AI execution
-            wait_time = 30
-            print(f"  Waiting for AI to process ({wait_time} seconds)...")
+                    if (sec + 1) % 5 == 0:
+                        print(f"    {sec + 1}/{wait_time} seconds...")
 
-            for sec in range(wait_time):
+                # Special: MOUSE WHEEL SCROLL — switch back to Google News to capture the after state
+                if test_name == "MOUSE WHEEL SCROLL":
+                    news_window = find_window_by_title("Google News", timeout=5)
+                    if news_window:
+                        try:
+                            news_window.activate()
+                        except Exception:
+                            pass
+                        time.sleep(SLEEP_B)
+            else:
+                # Dialog kind: open File menu via Alt → Enter, then navigate to the target item
+                print(f"  Opening {test_name} via File menu...")
+                pyautogui.press('alt')
                 time.sleep(SLEEP_A)
-
-                if not executor.process_manager.is_running():
-                    message = f"LIMA crashed during {test_name}"
-                    executor.add_test_result(result_name, TEST_FAILED, message)
-                    print(f"  X {message}")
-                    return
-
-                if (sec + 1) % 5 == 0:
-                    print(f"    {sec + 1}/{wait_time} seconds...")
-
-            # Special: MOUSE WHEEL SCROLL — switch back to Google News to capture the after state
-            if test_name == "MOUSE WHEEL SCROLL":
-                news_window = find_window_by_title("Google News", timeout=5)
-                if news_window:
-                    try:
-                        news_window.activate()
-                    except Exception:
-                        pass
-                    time.sleep(SLEEP_B)
+                pyautogui.press('enter')
+                time.sleep(SLEEP_B)
+                for key in test["menu_nav_keys"]:
+                    pyautogui.press(key)
+                    time.sleep(SLEEP_A)
+                time.sleep(SLEEP_C)
 
             # Step 10: Take AFTER screenshot (for visual verification)
             after_screenshot = None
@@ -170,6 +228,28 @@ def run_all_tool_tests(executor):
             if test_name == "MOVE MOUSE TO" and after_screenshot:
                 after_screenshot = overlay_cursor_on_screenshot(after_screenshot, pyautogui.position())
 
+            # Dialog kind: poll for the dialog window as a sanity check
+            if kind == "dialog":
+                keywords = test["dialog_title_keywords"]
+                print(f"  Searching for {test_name} window...")
+                for attempt in range(10):
+                    all_windows = gw.getAllWindows()
+                    if attempt == 0:
+                        print("    Current windows:")
+                        for w in all_windows:
+                            if w.title.strip():
+                                print(f"      - '{w.title}'")
+                    for window in all_windows:
+                        if any(kw in window.title for kw in keywords):
+                            dialog_window = window
+                            print(f"  OK Found dialog: '{window.title}'")
+                            break
+                    if dialog_window:
+                        break
+                    if attempt % 2 == 0:
+                        print(f"    Attempt {attempt + 1}/10 - {test_name} not found yet...")
+                    time.sleep(SLEEP_A)
+
             # Step 11: Verification using OpenRouter Gemini
             verification_result = None
             if verification_type != "no_verification" and before_screenshot and after_screenshot:
@@ -183,8 +263,12 @@ def run_all_tool_tests(executor):
             else:
                 print("  No visual verification required")
 
-            # Step 11: Cleanup
-            if "WINDOWS KEY" in test_name:
+            # Step 12: Cleanup
+            if kind == "dialog":
+                print(f"  Closing {test_name}...")
+                pyautogui.press('escape')
+                time.sleep(SLEEP_A)
+            elif "WINDOWS KEY" in test_name:
                 pyautogui.press('escape')
                 time.sleep(SLEEP_A)
 
@@ -198,9 +282,14 @@ def run_all_tool_tests(executor):
                 pyautogui.hotkey('ctrl', 'w')  # Close Amazon browser tab
                 time.sleep(SLEEP_A)
 
-            # Step 12: Cleanup and record result
+            # Step 13: Record result
             if executor.process_manager.is_running():
-                if verification_type == "no_verification":
+                if kind == "dialog" and dialog_window is None:
+                    message = f"{test_name} did not appear within timeout — menu navigation failed"
+                    executor.add_test_result(result_name, TEST_FAILED, message)
+                    executor.add_error(f"{test_name} window not found after menu click")
+                    print(f"  X {test_name} FAILED - dialog did not open")
+                elif verification_type == "no_verification":
                     # For tools that don't require visual verification
                     executor.add_test_result(
                         result_name, TEST_PASSED,
@@ -245,4 +334,3 @@ def run_all_tool_tests(executor):
             message = f"Exception during {test_name}: {str(error)}"
             executor.add_test_result(result_name, TEST_FAILED, message)
             print(f"  X {message}")
-
