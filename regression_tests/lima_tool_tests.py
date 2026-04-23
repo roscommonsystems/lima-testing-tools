@@ -10,7 +10,7 @@ import pyautogui
 
 from lima_test_utils import (
     take_screenshot, verify_tool_with_screenshots, overlay_cursor_on_screenshot,
-    find_window_by_title, TEST_PASSED, TEST_FAILED,
+    find_window_by_title, measure_peak_audio, TEST_PASSED, TEST_FAILED,
     speak_tts, type_into_lima,
     SLEEP_A, SLEEP_B, SLEEP_C, SLEEP_D
 )
@@ -22,6 +22,9 @@ def run_all_tool_tests(executor):
     print("TESTING ALL LIMA AI TOOLS")
     print("=" * 60)
 
+    # ALL new tests go here — do NOT add standalone _test_* methods to LimaTestExecutor.
+    # Pick a kind: "command" (type+Enter+30s+screenshot-verify), "dialog" (File-menu nav+title poll),
+    # or "audio" (type+Enter+measure_peak_audio). The loop handles banner/TTS/fresh-launch/result.
     tool_tests = [
         {
             "kind": "dialog",
@@ -60,6 +63,14 @@ def run_all_tool_tests(executor):
             ),
             "menu_nav_keys": ["down", "enter"],
             "dialog_title_keywords": ["Subscription Information", "Subscription"],
+        },
+        {
+            "kind": "audio",
+            "name": "AUDIO OUTPUT",
+            "result_name": "Audio Output Test",
+            "command": "count to 5",
+            "verification_type": "audio",
+            "verification_prompt": "Audio peak detection — no visual verification",
         },
         {"kind": "command", "name": "TYPE TEXT", "command": "Type hello", "result_name": "AI Tool Test: Type Text", "verification_type": "text_input", "verification_prompt": "Does the AFTER screenshot show the text 'hello' appearing in a text input field?"},
         {"kind": "command", "name": "WEATHER", "command": "whats the weather in japan", "result_name": "AI Tool Test: Weather Retrieval", "verification_type": "content_verification", "verification_prompt": "Did LIMA display a weather response or information about Japan's weather? Look for any new text content or weather-related information in the LIMA interface."},
@@ -145,7 +156,7 @@ def run_all_tool_tests(executor):
 
             # Step 6: Take BEFORE screenshot (for visual verification)
             before_screenshot = None
-            if verification_type != "no_verification":
+            if verification_type != "no_verification" and kind != "audio":
                 print("  Taking BEFORE screenshot...")
                 before_screenshot = take_screenshot()
                 if not before_screenshot:
@@ -153,8 +164,9 @@ def run_all_tool_tests(executor):
                 else:
                     print("  OK BEFORE screenshot captured")
 
-            # Step 7: Action — either type a LIMA command or open a File-menu dialog
+            # Step 7: Action — type a command, open a File-menu dialog, or trigger audio
             dialog_window = None
+            audio_result = None
             if kind == "command":
                 print(f"  Executing tool: '{test['command']}'")
                 type_into_lima(test["command"])
@@ -202,8 +214,8 @@ def run_all_tool_tests(executor):
                         except Exception:
                             pass
                         time.sleep(SLEEP_B)
-            else:
-                # Dialog kind: open File menu via Alt → Enter, then navigate to the target item
+            elif kind == "dialog":
+                # Open File menu via Alt → Enter, then navigate to the target item
                 print(f"  Opening {test_name} via File menu...")
                 pyautogui.press('alt')
                 time.sleep(SLEEP_A)
@@ -213,10 +225,19 @@ def run_all_tool_tests(executor):
                     pyautogui.press(key)
                     time.sleep(SLEEP_A)
                 time.sleep(SLEEP_C)
+            else:
+                # Audio kind: type command into LIMA, submit, then measure per-session audio peak.
+                # measure_peak_audio's own duration IS the wait — no 30s AI loop needed.
+                print(f"  Typing '{test['command']}' into LIMA...")
+                type_into_lima(test["command"])
+                time.sleep(SLEEP_A)
+                pyautogui.press('enter')
+                print("  Listening for audio (up to 15s)...")
+                audio_result = measure_peak_audio(max_duration_s=15, poll_hz=20)
 
             # Step 10: Take AFTER screenshot (for visual verification)
             after_screenshot = None
-            if verification_type != "no_verification":
+            if verification_type != "no_verification" and kind != "audio":
                 print("  Taking AFTER screenshot...")
                 after_screenshot = take_screenshot()
                 if not after_screenshot:
@@ -289,6 +310,21 @@ def run_all_tool_tests(executor):
                     executor.add_test_result(result_name, TEST_FAILED, message)
                     executor.add_error(f"{test_name} window not found after menu click")
                     print(f"  X {test_name} FAILED - dialog did not open")
+                elif kind == "audio":
+                    peak = audio_result["max_peak"]
+                    pid = audio_result["loudest_pid"]
+                    name = audio_result["loudest_process_name"] or "unknown"
+                    elapsed = audio_result["elapsed_s"]
+                    if audio_result["detected"]:
+                        message = (f"Audio detected — max peak {peak:.3f} from PID {pid} "
+                                   f"({name}) after {elapsed:.1f}s")
+                        executor.add_test_result(result_name, TEST_PASSED, message)
+                        print(f"  OK {message}")
+                    else:
+                        message = f"No audio detected in 15s window — max peak {peak:.3f}"
+                        executor.add_test_result(result_name, TEST_FAILED, message)
+                        executor.add_error(message)
+                        print(f"  X {message}")
                 elif verification_type == "no_verification":
                     # For tools that don't require visual verification
                     executor.add_test_result(
