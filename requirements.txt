@@ -7,3 +7,5 @@ requests>=2.28.0
 openai>=1.0.0
 uiautomation>=2.0.0
 pyttsx3>=2.90
+pycaw>=20230407
+comtypes>=1.2.0

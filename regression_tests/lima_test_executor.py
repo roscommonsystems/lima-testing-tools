@@ -130,7 +130,10 @@ class LimaTestExecutor:
             
             # Test 10: Test Subscription Information dialog
             self._test_subscription_dialog()
-            
+
+            # Test 10b: Verify LIMA actually produces audio (catches empty-TTS bug)
+            self._test_audio_output()
+
             # Test 11: Close for tool tests
             close_error = self.process_manager.close()
             if close_error:
@@ -555,6 +558,50 @@ class LimaTestExecutor:
             )
         )
     
+    def _test_audio_output(self):
+        """
+        Test: Trigger LIMA to speak and confirm real audio hits the speakers.
+
+        Catches the silent-TTS bug where the server returns empty audio for
+        certain voices — LIMA appears healthy but no sound plays. Measures
+        at the session level so muted/low system volume does not affect
+        the result.
+        """
+        speak_tts("Audio output test")
+        result_name = "Audio Output Test"
+        try:
+            if not self.process_manager.refocus(timeout=10):
+                self.add_test_result(result_name, TEST_FAILED, "Could not refocus LIMA to issue speak command")
+                return
+
+            print("  Typing 'count to 5' into LIMA...")
+            type_into_lima("count to 5")
+            time.sleep(SLEEP_A)
+            pyautogui.press('enter')
+
+            print("  Listening for audio (up to 15s)...")
+            audio = measure_peak_audio(max_duration_s=15, poll_hz=20)
+
+            peak = audio["max_peak"]
+            pid = audio["loudest_pid"]
+            name = audio["loudest_process_name"] or "unknown"
+            elapsed = audio["elapsed_s"]
+
+            if audio["detected"]:
+                message = (f"Audio detected — max peak {peak:.3f} from PID {pid} "
+                           f"({name}) after {elapsed:.1f}s")
+                self.add_test_result(result_name, TEST_PASSED, message)
+                print(f"  OK {message}")
+            else:
+                message = f"No audio detected in 15s window — max peak {peak:.3f}"
+                self.add_test_result(result_name, TEST_FAILED, message)
+                self.add_error(message)
+                print(f"  X {message}")
+        except Exception as error:
+            message = f"Exception during audio output test: {str(error)}"
+            self.add_test_result(result_name, TEST_FAILED, message)
+            self.add_error(message)
+
     def _test_postrun_crash_logs(self):
         """Test: Check for crash logs created during test run."""
         # Give filesystem time to flush

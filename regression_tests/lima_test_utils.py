@@ -43,6 +43,85 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 _api_keys = {}
 
 
+def measure_peak_audio(max_duration_s=15, poll_hz=20, exclude_pids=None,
+                       sustain_threshold=0.005, sustain_samples=3):
+    """
+    Detect audio output by polling per-session peak meters via the Windows Core
+    Audio API (pycaw). Session-level meters are pre-endpoint-volume, so muted
+    or low system volume does not affect detection.
+
+    Exits early once sustain_samples consecutive polls exceed sustain_threshold.
+
+    Returns a dict:
+        max_peak             float  — highest single peak observed across sessions
+        detected             bool   — sustained peak above threshold was seen
+        loudest_pid          int|None
+        loudest_process_name str|None
+        elapsed_s            float
+    """
+    from pycaw.pycaw import AudioUtilities
+    from pycaw.api.endpointvolume import IAudioMeterInformation
+
+    if exclude_pids is None:
+        exclude_pids = [os.getpid()]
+    exclude = set(exclude_pids)
+
+    max_peak = 0.0
+    loudest_pid = None
+    loudest_name = None
+    consecutive_hits = 0
+    detected = False
+
+    interval = 1.0 / poll_hz
+    start = time.time()
+    while time.time() - start < max_duration_s:
+        poll_peak = 0.0
+        poll_pid = None
+        poll_name = None
+        try:
+            sessions = AudioUtilities.GetAllSessions()
+        except Exception as e:
+            print(f"  ! Audio session enumeration failed: {e}")
+            break
+
+        for session in sessions:
+            try:
+                pid = session.ProcessId
+                if pid in exclude:
+                    continue
+                meter = session._ctl.QueryInterface(IAudioMeterInformation)
+                peak = meter.GetPeakValue()
+                if peak > poll_peak:
+                    poll_peak = peak
+                    poll_pid = pid
+                    poll_name = session.Process.name() if session.Process else None
+            except Exception:
+                continue
+
+        if poll_peak > max_peak:
+            max_peak = poll_peak
+            loudest_pid = poll_pid
+            loudest_name = poll_name
+
+        if poll_peak > sustain_threshold:
+            consecutive_hits += 1
+            if consecutive_hits >= sustain_samples:
+                detected = True
+                break
+        else:
+            consecutive_hits = 0
+
+        time.sleep(interval)
+
+    return {
+        "max_peak": max_peak,
+        "detected": detected,
+        "loudest_pid": loudest_pid,
+        "loudest_process_name": loudest_name,
+        "elapsed_s": time.time() - start,
+    }
+
+
 def speak_tts(text):
     """Announce text via TTS in a daemon thread so it never blocks test execution."""
     def _run():
