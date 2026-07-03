@@ -91,6 +91,9 @@ class LimaTestExecutor:
                 self._msgbox("LIMA Tests Aborted", "LIMA executable not found.\n\nCheck that LIMA Screen Reader is installed.", error=True)
                 return False
 
+            # Test 1b: Verify production build is windowed (no console window)
+            self._test_no_console_window()
+
             # Test 2: Check for pre-existing crash logs
             self._test_prerun_crash_logs()
             
@@ -172,6 +175,41 @@ class LimaTestExecutor:
             self.add_error("Unable to locate LIMA installation")
             return False
     
+    def _test_no_console_window(self):
+        """
+        Test: Verify the production LIMA build is windowed (no console window).
+
+        LIMA is a GUI screen reader, so its executable should be packaged with
+        the WINDOWS_GUI subsystem. A WINDOWS_CONSOLE build causes a terminal
+        window to appear whenever LIMA launches — a visible defect for end
+        users. This is a static check on the shipped .exe (its PE subsystem),
+        so it requires no launch and cannot flake.
+        """
+        try:
+            exe_path = self.process_manager.exe_full_path
+            if not exe_path:
+                message = "Cannot check console subsystem - LIMA executable path unknown"
+                self.add_test_result("Console Window Absence Check", TEST_FAILED, message)
+                return
+
+            subsystem = get_pe_subsystem(exe_path)
+            subsystem_name = PE_SUBSYSTEM_NAMES.get(subsystem, f"UNKNOWN({subsystem})")
+
+            if subsystem == PE_SUBSYSTEM_WINDOWS_GUI:
+                message = f"Production build is windowed ({subsystem_name} subsystem) - no console window will appear"
+                self.add_test_result("Console Window Absence Check", TEST_PASSED, message)
+            else:
+                message = (
+                    f"Production build uses {subsystem_name} subsystem - a console/terminal "
+                    f"window will appear on launch. Rebuild LIMA in windowed mode (console disabled)."
+                )
+                self.add_test_result("Console Window Absence Check", TEST_FAILED, message)
+                self.add_error("LIMA executable is not packaged as a windowed (GUI) application")
+
+        except Exception as error:
+            message = f"Exception during console subsystem check: {str(error)}"
+            self.add_test_result("Console Window Absence Check", TEST_FAILED, message)
+
     def _test_prerun_crash_logs(self):
         """Test: Check for pre-existing crash logs before starting LIMA."""
         crash_info = check_crash_logs(self.process_manager.install_path)

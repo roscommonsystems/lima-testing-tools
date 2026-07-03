@@ -8,6 +8,7 @@ import sys
 import json
 import time
 import base64
+import struct
 import logging
 import threading
 from io import BytesIO
@@ -426,6 +427,55 @@ def check_crash_logs(lima_install_path):
             }
 
     return {"exists": False}
+
+
+# PE subsystem codes from the Windows PE/COFF optional header
+PE_SUBSYSTEM_NATIVE = 1
+PE_SUBSYSTEM_WINDOWS_GUI = 2
+PE_SUBSYSTEM_WINDOWS_CONSOLE = 3
+
+PE_SUBSYSTEM_NAMES = {
+    PE_SUBSYSTEM_NATIVE: "NATIVE",
+    PE_SUBSYSTEM_WINDOWS_GUI: "WINDOWS_GUI",
+    PE_SUBSYSTEM_WINDOWS_CONSOLE: "WINDOWS_CONSOLE",
+}
+
+
+def get_pe_subsystem(exe_path):
+    """
+    Read the Windows Subsystem field from a PE executable's optional header.
+
+    The subsystem decides whether Windows attaches a console window when the
+    program runs: WINDOWS_GUI (2) apps are windowed with no console, while
+    WINDOWS_CONSOLE (3) apps get a terminal window. For a GUI application like
+    LIMA, a console-subsystem build means a stray terminal appears on launch.
+
+    The Subsystem field sits at offset 68 within the optional header for both
+    PE32 and PE32+ images — PE32+'s wider ImageBase is cancelled out by its
+    earlier start offset — so a single read handles both formats.
+
+    Args:
+        exe_path (str): Full path to the executable.
+
+    Returns:
+        int: The subsystem code (see PE_SUBSYSTEM_* constants).
+
+    Raises:
+        ValueError: If the file is not a valid PE image.
+        OSError: If the file cannot be read.
+    """
+    with open(exe_path, 'rb') as exe_file:
+        header = exe_file.read(4096)
+
+    # e_lfanew at offset 0x3C points to the PE signature ("PE\0\0").
+    pe_offset = struct.unpack_from('<I', header, 0x3C)[0]
+    if header[pe_offset:pe_offset + 4] != b'PE\x00\x00':
+        raise ValueError(f"Not a valid PE executable: {exe_path}")
+
+    # Optional header starts 24 bytes after the signature (4-byte signature + 20-byte COFF header).
+    optional_header_offset = pe_offset + 24
+    subsystem = struct.unpack_from('<H', header, optional_header_offset + 68)[0]
+    return subsystem
 
 
 def overlay_cursor_on_screenshot(screenshot, cursor_pos):
