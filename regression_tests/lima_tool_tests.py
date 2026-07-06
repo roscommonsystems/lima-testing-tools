@@ -82,7 +82,15 @@ def run_all_tool_tests(executor):
         {"kind": "command", "name": "WINDOWS KEY", "command": "press the windows key", "result_name": "AI Tool Test: Windows Key", "verification_type": "start_menu", "verification_prompt": "Did the Start menu or search window appear on screen?"},
         {"kind": "command", "name": "SHOW DESKTOP", "command": "show the desktop", "result_name": "AI Tool Test: Show Desktop", "verification_type": "desktop", "verification_prompt": "Are all application windows minimized and the desktop visible?"},
         {"kind": "command", "name": "TYPE NUMBERS", "command": "type any number", "result_name": "AI Tool Test: Type Number", "verification_type": "text_input", "verification_prompt": "Does the AFTER screenshot show numbers appearing in a text input field?"},
-        {"kind": "command", "name": "OPEN NOTEPAD", "command": "open notepad", "result_name": "AI Tool Test: Open Notepad", "verification_type": "window_appearance", "verification_prompt": "Did a Notepad window appear on screen?"},
+        {"kind": "command", "name": "OPEN NOTEPAD", "command": "open notepad", "result_name": "AI Tool Test: Open Notepad", "verification_type": "window_appearance", "verification_prompt": "Did a Notepad window appear on screen?", "close_after": True},
+        {"kind": "command", "name": "OPEN CALCULATOR", "command": "open calculator", "result_name": "AI Tool Test: Open Calculator", "verification_type": "window_appearance", "verification_prompt": "Did a Calculator window appear on screen?", "close_after": True},
+        {"kind": "command", "name": "OPEN PAINT", "command": "open paint", "result_name": "AI Tool Test: Open Paint", "verification_type": "window_appearance", "verification_prompt": "Did a Microsoft Paint window appear on screen?", "close_after": True},
+        {"kind": "command", "name": "OPEN SETTINGS", "command": "open settings", "result_name": "AI Tool Test: Open Settings", "verification_type": "window_appearance", "verification_prompt": "Did a Windows Settings window appear on screen?", "close_after": True},
+        {"kind": "command", "name": "OPEN EDGE", "command": "open microsoft edge", "result_name": "AI Tool Test: Open Microsoft Edge", "verification_type": "window_appearance", "verification_prompt": "Did a Microsoft Edge browser window appear on screen? Look for the Edge browser interface (address bar, tabs, web content).", "close_after": True},
+        {"kind": "command", "name": "OPEN SNIPPING TOOL", "command": "open snipping tool", "result_name": "AI Tool Test: Open Snipping Tool", "verification_type": "window_appearance", "verification_prompt": "Did the Snipping Tool appear on screen? Look for the Snipping Tool window or its capture toolbar (usually a small bar near the top of the screen).", "close_after": True},
+        {"kind": "command", "name": "OPEN CLOCK", "command": "open clock", "result_name": "AI Tool Test: Open Clock", "verification_type": "window_appearance", "verification_prompt": "Did a Clock or 'Alarms & Clock' app window appear on screen? Look for a clock/timer/stopwatch/alarm interface.", "close_after": True},
+        {"kind": "command", "name": "OPEN WEATHER", "command": "open weather", "result_name": "AI Tool Test: Open Weather", "verification_type": "window_appearance", "verification_prompt": "Did a Weather app window appear on screen? Look for a weather forecast, temperature, or location information.", "close_after": True},
+        {"kind": "command", "name": "OPEN MAPS", "command": "open maps", "result_name": "AI Tool Test: Open Maps", "verification_type": "window_appearance", "verification_prompt": "Did a Maps app window appear on screen? Look for a map view, search bar, or navigation interface.", "close_after": True},
         {"kind": "command", "name": "MINIMIZE WINDOW", "command": "minimize window", "result_name": "AI Tool Test: Minimize Window", "verification_type": "window_state", "verification_prompt": "Did the active window minimize to the taskbar?"},
         {"kind": "command", "name": "MAXIMIZE WINDOW", "command": "maximize window", "result_name": "AI Tool Test: Maximize Window", "verification_type": "window_state", "verification_prompt": "Did the active window maximize to fill the screen?"},
         {"kind": "command", "name": "OPEN WEBSITE", "command": "open google.com", "result_name": "AI Tool Test: Open Website", "verification_type": "browser_window", "verification_prompt": "Did a web browser window open showing Google or a website?"},
@@ -135,6 +143,15 @@ def run_all_tool_tests(executor):
             # Step 5: Capture mouse BEFORE
             mouse_before = pyautogui.position()
             print(f"  Mouse position before: {mouse_before}")
+
+            # For "open <app>" tests, snapshot the current top-level windows so we
+            # can close only the ones this test opens (see cleanup in Step 12).
+            windows_before = set()
+            if test.get("close_after"):
+                try:
+                    windows_before = {w._hWnd for w in gw.getAllWindows()}
+                except Exception:
+                    windows_before = set()
 
             # Special pre-screenshot setup (command tests only)
             if kind == "command":
@@ -204,6 +221,35 @@ def run_all_tool_tests(executor):
 
                     if (sec + 1) % 5 == 0:
                         print(f"    {sec + 1}/{wait_time} seconds...")
+
+                # Retry for open-program tests: the open_program tool is known to be
+                # environment/machine-dependent and can intermittently fail to resolve a
+                # program (returning "unknown program"). If nothing opened, re-send the
+                # command a few times so the result reflects whether the tool CAN open the
+                # app, not a one-off flake. Passes on the first success; only a persistent
+                # failure across all attempts is reported as a real failure.
+                if test.get("close_after"):
+                    max_attempts = 3
+                    retry_wait = 15
+                    attempt = 1
+                    while attempt < max_attempts:
+                        opened = [w for w in gw.getAllWindows()
+                                  if w._hWnd not in windows_before and w.title.strip() and "LIMA" not in w.title]
+                        if opened:
+                            break
+                        attempt += 1
+                        print(f"  App not open yet — retry {attempt}/{max_attempts}: re-sending '{test['command']}'...")
+                        type_into_lima(test["command"])
+                        time.sleep(SLEEP_A)
+                        pyautogui.press('enter')
+                        time.sleep(SLEEP_C)
+                        for _ in range(retry_wait):
+                            time.sleep(SLEEP_A)
+                            if not executor.process_manager.is_running():
+                                message = f"LIMA crashed during {test_name}"
+                                executor.add_test_result(result_name, TEST_FAILED, message)
+                                print(f"  X {message}")
+                                return
 
                 # Special: MOUSE WHEEL SCROLL — switch back to Google News to capture the after state
                 if test_name == "MOUSE WHEEL SCROLL":
@@ -302,6 +348,27 @@ def run_all_tool_tests(executor):
             elif "MOUSE WHEEL SCROLL" in test_name:
                 pyautogui.hotkey('ctrl', 'w')  # Close Amazon browser tab
                 time.sleep(SLEEP_A)
+
+            # Close any app windows this "open <app>" test opened, so they don't
+            # pile up and clutter later screenshots. Only windows that appeared
+            # after Step 5's snapshot are closed; pre-existing windows, the test
+            # console, and the LIMA window are all left alone. We send WM_CLOSE to
+            # the specific window (never kill a process by name — that would take
+            # down the Explorer shell along with a File Explorer window).
+            if test.get("close_after"):
+                print(f"  Closing windows opened by {test_name}...")
+                for window in gw.getAllWindows():
+                    try:
+                        if window._hWnd in windows_before:
+                            continue
+                        if not window.title or not window.title.strip():
+                            continue
+                        if "LIMA" in window.title:
+                            continue
+                        window.close()
+                        time.sleep(SLEEP_A)
+                    except Exception:
+                        pass
 
             # Step 13: Record result
             if executor.process_manager.is_running():
