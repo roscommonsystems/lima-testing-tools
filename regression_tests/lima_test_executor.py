@@ -13,6 +13,7 @@ from lima_test_utils import *
 from lima_test_reporter import LimaTestReporter
 from lima_process_manager import LimaProcessManager
 from lima_tool_tests import run_all_tool_tests
+from lima_voice_tests import run_all_voice_tests
 
 
 class LimaTestExecutor:
@@ -122,6 +123,14 @@ class LimaTestExecutor:
             self._test_all_tools()
 
             # Close LIMA after all tool tests
+            close_error = self.process_manager.close()
+            if close_error:
+                self.add_error(close_error)
+            time.sleep(SLEEP_C)
+
+            # Run all voice-coverage tests (launches/closes its own LIMA session)
+            self._test_all_voices()
+
             close_error = self.process_manager.close()
             if close_error:
                 self.add_error(close_error)
@@ -396,6 +405,10 @@ class LimaTestExecutor:
     def _test_all_tools(self):
         """Test: Run all LIMA AI tool tests in a single session with screenshot verification."""
         run_all_tool_tests(self)
+
+    def _test_all_voices(self):
+        """Test: Verify each selectable TTS voice can be switched to and produces audio."""
+        run_all_voice_tests(self)
 
     # ========================================
     # Delegate Methods to Reporter
