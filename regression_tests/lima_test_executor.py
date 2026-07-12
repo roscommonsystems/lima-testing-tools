@@ -14,6 +14,7 @@ from lima_test_reporter import LimaTestReporter
 from lima_process_manager import LimaProcessManager
 from lima_tool_tests import run_all_tool_tests
 from lima_voice_tests import run_all_voice_tests
+from lima_settings_tests import run_settings_hotkey_reconfigure_test
 
 
 class LimaTestExecutor:
@@ -130,6 +131,15 @@ class LimaTestExecutor:
 
             # Run all voice-coverage tests (launches/closes its own LIMA session)
             self._test_all_voices()
+
+            close_error = self.process_manager.close()
+            if close_error:
+                self.add_error(close_error)
+            time.sleep(SLEEP_C)
+
+            # Run the settings hotkey-reconfigure regression test (launches/closes
+            # its own LIMA session and restores config.json afterwards)
+            self._test_settings_hotkey_reconfigure()
 
             close_error = self.process_manager.close()
             if close_error:
@@ -409,6 +419,10 @@ class LimaTestExecutor:
     def _test_all_voices(self):
         """Test: Verify each selectable TTS voice can be switched to and produces audio."""
         run_all_voice_tests(self)
+
+    def _test_settings_hotkey_reconfigure(self):
+        """Test: Saving a changed hotkey in Settings must leave global hotkeys alive."""
+        run_settings_hotkey_reconfigure_test(self)
 
     # ========================================
     # Delegate Methods to Reporter

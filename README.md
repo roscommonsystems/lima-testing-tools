@@ -73,7 +73,9 @@ lima-testing-suite/
     ├── lima_test_executor.py       # Test execution logic
     ├── lima_test_reporter.py       # Result reporting
     ├── lima_test_utils.py          # Utility functions
-    └── lima_tool_tests.py          # AI tool test scenarios
+    ├── lima_tool_tests.py          # AI tool test scenarios
+    ├── lima_voice_tests.py         # TTS voice-coverage sweep
+    └── lima_settings_tests.py      # Settings hotkey-reconfigure regression guard
 ```
 
 ## Security Notes
