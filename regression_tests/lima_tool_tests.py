@@ -90,7 +90,10 @@ def run_all_tool_tests(executor):
         {"kind": "command", "name": "OPEN SNIPPING TOOL", "command": "open snipping tool", "result_name": "AI Tool Test: Open Snipping Tool", "verification_type": "window_appearance", "verification_prompt": "Did the Snipping Tool appear on screen? Look for the Snipping Tool window or its capture toolbar (usually a small bar near the top of the screen).", "close_after": True},
         {"kind": "command", "name": "OPEN CLOCK", "command": "open clock", "result_name": "AI Tool Test: Open Clock", "verification_type": "window_appearance", "verification_prompt": "Did a Clock or 'Alarms & Clock' app window appear on screen? Look for a clock/timer/stopwatch/alarm interface.", "close_after": True},
         {"kind": "command", "name": "OPEN WEATHER", "command": "open weather", "result_name": "AI Tool Test: Open Weather", "verification_type": "window_appearance", "verification_prompt": "Did a Weather app window appear on screen? Look for a weather forecast, temperature, or location information.", "close_after": True},
-        {"kind": "command", "name": "OPEN MAPS", "command": "open maps", "result_name": "AI Tool Test: Open Maps", "verification_type": "window_appearance", "verification_prompt": "Did a Maps app window appear on screen? Look for a map view, search bar, or navigation interface.", "close_after": True},
+        {"kind": "command", "name": "OPEN CHROME", "command": "open chrome", "result_name": "AI Tool Test: Open Chrome", "verification_type": "window_appearance", "verification_prompt": "Did a Google Chrome browser window appear on screen? Look for the Chrome interface (address bar, tabs, web content).", "close_after": True},
+        {"kind": "command", "name": "OPEN WORD", "command": "open microsoft word", "result_name": "AI Tool Test: Open Word", "verification_type": "window_appearance", "verification_prompt": "Did a Microsoft Word window appear on screen? Look for the Word document editor or its start screen.", "close_after": True},
+        {"kind": "command", "name": "OPEN EXCEL", "command": "open excel", "result_name": "AI Tool Test: Open Excel", "verification_type": "window_appearance", "verification_prompt": "Did a Microsoft Excel window appear on screen? Look for a spreadsheet grid or its start screen.", "close_after": True},
+        {"kind": "command", "name": "OPEN OUTLOOK", "command": "open outlook", "result_name": "AI Tool Test: Open Outlook", "verification_type": "window_appearance", "verification_prompt": "Did a Microsoft Outlook window appear on screen? Look for an email inbox, calendar, or its start screen.", "close_after": True},
         {"kind": "command", "name": "MINIMIZE WINDOW", "command": "minimize window", "result_name": "AI Tool Test: Minimize Window", "verification_type": "window_state", "verification_prompt": "Did the active window minimize to the taskbar?"},
         {"kind": "command", "name": "MAXIMIZE WINDOW", "command": "maximize window", "result_name": "AI Tool Test: Maximize Window", "verification_type": "window_state", "verification_prompt": "Did the active window maximize to fill the screen?"},
         {"kind": "command", "name": "OPEN WEBSITE", "command": "open google.com", "result_name": "AI Tool Test: Open Website", "verification_type": "browser_window", "verification_prompt": "Did a web browser window open showing Google or a website?"},
@@ -221,35 +224,6 @@ def run_all_tool_tests(executor):
 
                     if (sec + 1) % 5 == 0:
                         print(f"    {sec + 1}/{wait_time} seconds...")
-
-                # Retry for open-program tests: the open_program tool is known to be
-                # environment/machine-dependent and can intermittently fail to resolve a
-                # program (returning "unknown program"). If nothing opened, re-send the
-                # command a few times so the result reflects whether the tool CAN open the
-                # app, not a one-off flake. Passes on the first success; only a persistent
-                # failure across all attempts is reported as a real failure.
-                if test.get("close_after"):
-                    max_attempts = 3
-                    retry_wait = 15
-                    attempt = 1
-                    while attempt < max_attempts:
-                        opened = [w for w in gw.getAllWindows()
-                                  if w._hWnd not in windows_before and w.title.strip() and "LIMA" not in w.title]
-                        if opened:
-                            break
-                        attempt += 1
-                        print(f"  App not open yet — retry {attempt}/{max_attempts}: re-sending '{test['command']}'...")
-                        type_into_lima(test["command"])
-                        time.sleep(SLEEP_A)
-                        pyautogui.press('enter')
-                        time.sleep(SLEEP_C)
-                        for _ in range(retry_wait):
-                            time.sleep(SLEEP_A)
-                            if not executor.process_manager.is_running():
-                                message = f"LIMA crashed during {test_name}"
-                                executor.add_test_result(result_name, TEST_FAILED, message)
-                                print(f"  X {message}")
-                                return
 
                 # Special: MOUSE WHEEL SCROLL — switch back to Google News to capture the after state
                 if test_name == "MOUSE WHEEL SCROLL":
