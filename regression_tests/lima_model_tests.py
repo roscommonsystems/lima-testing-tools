@@ -35,13 +35,13 @@ def _find_settings_window(maxdepth=6):
             nm = (ctrl.Name or "").lower()
             if "setting" in nm and "lima" in nm:
                 return ctrl
-        except Exception:
-            pass
+        except Exception as err:
+            print(err)
         if depth < maxdepth:
             try:
                 stack.extend((c, depth + 1) for c in ctrl.GetChildren())
-            except Exception:
-                pass
+            except Exception as err:
+                print(err)
     return None
 
 
@@ -70,7 +70,8 @@ def _select_model(settings_win, key):
         return None
     try:
         combo.GetExpandCollapsePattern().Expand()
-    except Exception:
+    except Exception as err:
+        print(err)
         combo.Click()
     time.sleep(SLEEP_B)
 
@@ -83,18 +84,19 @@ def _select_model(settings_win, key):
             if ctrl.ControlTypeName == "ListItemControl" and ctrl.Name and key in ctrl.Name:
                 target = ctrl
                 break
-        except Exception:
-            pass
+        except Exception as err:
+            print(err)
         if depth < 8:
             try:
                 stack.extend((c, depth + 1) for c in ctrl.GetChildren())
-            except Exception:
-                pass
+            except Exception as err:
+                print(err)
 
     if not target:
         try:
             combo.GetExpandCollapsePattern().Collapse()
-        except Exception:
+        except Exception as err:
+            print(err)
             pyautogui.press('escape')
         return None
 
@@ -102,7 +104,8 @@ def _select_model(settings_win, key):
     time.sleep(SLEEP_A)
     try:
         return combo.GetValuePattern().Value
-    except Exception:
+    except Exception as err:
+        print(err)
         return "<selected>"
 
 
