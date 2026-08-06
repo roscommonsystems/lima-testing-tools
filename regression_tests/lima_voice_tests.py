@@ -7,18 +7,109 @@ to and produces audio output. Part of the Regression Test Enhancement epic
 
 import time
 import pyautogui
+import uiautomation as uia
 
 from lima_test_utils import (
     measure_peak_audio, type_into_lima, TEST_PASSED, TEST_FAILED,
     speak_tts, SLEEP_A, SLEEP_B, SLEEP_C,
 )
+from lima_model_tests import _open_settings  # generic "open the Settings dialog" helper
 
-# The TTS voices LIMA actually supports, matching the Settings dialog "TTS Voice"
-# dropdown. NOTE: available_tools.py in the lima repo advertises 8 voices (it also
-# lists Algenib, Aoede, Sadaltager, Callirrhoe), but the running app only accepts
-# these 4 — the others return "Voice not found". If LIMA's voice set changes, update
-# this list to match the Settings dropdown (the source of truth).
-VOICES = ["Despina", "Enceladus", "Rasalgethi", "Laomedeia"]
+# The voices are discovered from the Settings "Text-to-Speech Voice" dropdown at runtime
+# (see _discover_available_voices) instead of a hardcoded list, so the test tracks
+# whatever the app currently offers (1.9.0.5 expanded the set from 4 to 8).
+VOICE_COMBO_NAME = "Text-to-Speech Voice Selection Dropdown"
+
+
+def _voice_key(label):
+    """Reduce a voice dropdown label to the name used in the switch command,
+    e.g. 'Despina (Chill Young Female)' -> 'Despina'."""
+    idx = label.find(" (")
+    return label[:idx].strip() if idx != -1 else label.strip()
+
+
+def _read_voice_options(settings_win):
+    """Expand the TTS Voice combo and return only its option labels, anchored on the
+    combo's current value so unrelated on-screen list items are ignored."""
+    combo = settings_win.ComboBoxControl(Name=VOICE_COMBO_NAME)
+    if not combo.Exists(2):
+        return []
+
+    current = ""
+    try:
+        current = combo.GetValuePattern().Value
+    except Exception as err:
+        print(err)
+    if not current:
+        print("  ! Could not read the voice combo's current value; cannot anchor discovery")
+        return []
+
+    try:
+        combo.GetExpandCollapsePattern().Expand()
+    except Exception as err:
+        print(err)
+        combo.Click()
+    time.sleep(SLEEP_B)
+
+    labels = []
+    root = uia.GetRootControl()
+    stack = [(c, 0) for c in root.GetChildren()]
+    while stack:
+        ctrl, depth = stack.pop()
+        try:
+            if ctrl.ControlTypeName == "ListControl":
+                names = [c.Name for c in ctrl.GetChildren()
+                         if c.ControlTypeName == "ListItemControl" and c.Name]
+                if current in names:
+                    labels = names
+                    break
+        except Exception as err:
+            print(err)
+        if depth < 8:
+            try:
+                stack.extend((c, depth + 1) for c in ctrl.GetChildren())
+            except Exception as err:
+                print(err)
+
+    try:
+        combo.GetExpandCollapsePattern().Collapse()
+    except Exception as err:
+        print(err)
+        pyautogui.press('escape')
+    return labels
+
+
+def _discover_available_voices(executor):
+    """Launch LIMA, open Settings, and read the TTS Voice dropdown so the test covers
+    exactly the voices the app currently offers. Returns a de-duplicated list of voice
+    names, or [] if the dropdown couldn't be read."""
+    executor.process_manager.close()
+    time.sleep(SLEEP_B)
+    if not executor.process_manager.launch(
+        executor.process_manager.exe_full_path,
+        executor.process_manager.install_path
+    ):
+        print("  X Could not launch LIMA for voice discovery")
+        return []
+    time.sleep(SLEEP_C)
+
+    settings_win = _open_settings(executor)
+    if not settings_win:
+        print("  X Could not open Settings for voice discovery")
+        executor.process_manager.close()
+        time.sleep(SLEEP_B)
+        return []
+
+    labels = _read_voice_options(settings_win)
+    executor.process_manager.close()
+    time.sleep(SLEEP_B)
+
+    keys = []
+    for label in labels:
+        key = _voice_key(label)
+        if key and key not in keys:
+            keys.append(key)
+    return keys
 
 
 def run_all_voice_tests(executor):
@@ -33,6 +124,18 @@ def run_all_voice_tests(executor):
     print("TESTING ALL LIMA TTS VOICES")
     print("=" * 60)
 
+    # Discover the voices the app currently offers so coverage tracks the live dropdown
+    # instead of a hardcoded list.
+    voices = _discover_available_voices(executor)
+    if not voices:
+        executor.add_test_result("Voice Discovery", TEST_FAILED,
+                                 "Could not read the TTS Voice dropdown to discover voices")
+        print("  X Could not discover any voices — skipping voice tests")
+        executor.process_manager.close()
+        time.sleep(SLEEP_B)
+        return
+    print(f"Discovered {len(voices)} voice(s): {', '.join(voices)}")
+
     # One fresh LIMA session for the whole voice sweep. Voice switching is stateful
     # and benign (it's exactly what the tool is for), so a single session is enough
     # and far faster than relaunching per voice.
@@ -43,7 +146,7 @@ def run_all_voice_tests(executor):
         executor.process_manager.exe_full_path,
         executor.process_manager.install_path
     ):
-        for voice in VOICES:
+        for voice in voices:
             executor.add_test_result(f"Voice Test: {voice}", TEST_FAILED,
                                      "Could not launch LIMA for voice tests")
         print("  X Could not launch LIMA for voice tests")
@@ -51,7 +154,7 @@ def run_all_voice_tests(executor):
     time.sleep(SLEEP_C)
 
     if not executor.process_manager.refocus(timeout=10):
-        for voice in VOICES:
+        for voice in voices:
             executor.add_test_result(f"Voice Test: {voice}", TEST_FAILED,
                                      "Could not refocus on LIMA window")
         print("  X Could not refocus on LIMA window")
@@ -66,8 +169,8 @@ def run_all_voice_tests(executor):
     pyautogui.hotkey('ctrl', 'alt', 'insert')
     time.sleep(SLEEP_A)
 
-    total = len(VOICES)
-    for i, voice in enumerate(VOICES, start=1):
+    total = len(voices)
+    for i, voice in enumerate(voices, start=1):
         result_name = f"Voice Test: {voice}"
         print("\n" + "-" * 50)
         print(f"VOICE TEST {i}/{total}: {voice}")
