@@ -15,11 +15,10 @@ from lima_test_utils import (
     SLEEP_A, SLEEP_B, SLEEP_C,
 )
 
-# The Base AI Models LIMA actually offers, matched by a unique substring of each
-# label (avoids the em-dash in the full text). NOTE: the running app is the source
-# of truth — the lima repo source listed a different set (incl. Opus 4.8). Update
-# this list if the Settings "Base AI Model" dropdown changes.
-MODEL_KEYS = ["GPT-5.5", "GPT-5.3", "Kimi K2.6", "Kimi K2.5", "Llama 4 Maverick"]
+# The models are discovered straight from the Settings "Base AI Model" dropdown at
+# runtime (see _discover_available_models) instead of a hardcoded list, so the test
+# stays robust to base-LLM changes: new models are covered automatically and retired
+# ones simply aren't tested (no false failures when e.g. Opus 4.8 is replaced by 5.x).
 
 MODEL_COMBO_NAME = "Base AI Model Selection Dropdown"
 SAVE_BUTTON_NAME = "Save Settings Button"
@@ -60,6 +59,106 @@ def _open_settings(executor):
     pyautogui.press('enter'); time.sleep(SLEEP_B)
     pyautogui.press('enter'); time.sleep(SLEEP_C)
     return _find_settings_window()
+
+
+def _model_key(label):
+    """Reduce a dropdown label to a short, stable key for selection + display,
+    e.g. 'Opus 4.8 (Anthropic) — Best for everyday, complex tasks' -> 'Opus 4.8'.
+    Splits on the provider parenthesis (present on every model), then the dash."""
+    for sep in (" (", " —", " -"):
+        idx = label.find(sep)
+        if idx != -1:
+            return label[:idx].strip()
+    return label.strip()
+
+
+def _read_model_options(settings_win):
+    """Expand the Base AI Model combo and return only its option labels.
+
+    The combo's dropdown is a ListControl in the UI tree, but a whole-tree scan for
+    ListItems also picks up unrelated items (taskbar, desktop icons, browser tabs,
+    LIMA's own chat log). So we anchor on the combo's current value and read only the
+    single ListControl that actually contains it.
+    """
+    combo = settings_win.ComboBoxControl(Name=MODEL_COMBO_NAME)
+    if not combo.Exists(2):
+        return []
+
+    current = ""
+    try:
+        current = combo.GetValuePattern().Value
+    except Exception as err:
+        print(err)
+    if not current:
+        print("  ! Could not read the model combo's current value; cannot anchor discovery")
+        return []
+
+    try:
+        combo.GetExpandCollapsePattern().Expand()
+    except Exception as err:
+        print(err)
+        combo.Click()
+    time.sleep(SLEEP_B)
+
+    labels = []
+    root = uia.GetRootControl()
+    stack = [(c, 0) for c in root.GetChildren()]
+    while stack:
+        ctrl, depth = stack.pop()
+        try:
+            if ctrl.ControlTypeName == "ListControl":
+                names = [c.Name for c in ctrl.GetChildren()
+                         if c.ControlTypeName == "ListItemControl" and c.Name]
+                if current in names:
+                    labels = names
+                    break
+        except Exception as err:
+            print(err)
+        if depth < 8:
+            try:
+                stack.extend((c, depth + 1) for c in ctrl.GetChildren())
+            except Exception as err:
+                print(err)
+
+    try:
+        combo.GetExpandCollapsePattern().Collapse()
+    except Exception as err:
+        print(err)
+        pyautogui.press('escape')
+    return labels
+
+
+def _discover_available_models(executor):
+    """Launch LIMA, open Settings, and read the Base AI Model dropdown so the test
+    covers exactly the models the app currently offers. Returns a de-duplicated list
+    of short model keys, or [] if the dropdown couldn't be read."""
+    executor.process_manager.close()
+    time.sleep(SLEEP_B)
+    if not executor.process_manager.launch(
+        executor.process_manager.exe_full_path,
+        executor.process_manager.install_path
+    ):
+        print("  X Could not launch LIMA for model discovery")
+        return []
+    time.sleep(SLEEP_C)
+
+    settings_win = _open_settings(executor)
+    if not settings_win:
+        print("  X Could not open Settings for model discovery")
+        executor.process_manager.close()
+        time.sleep(SLEEP_B)
+        return []
+
+    labels = _read_model_options(settings_win)
+    executor.process_manager.close()
+    time.sleep(SLEEP_B)
+
+    keys = []
+    for label in labels:
+        key = _model_key(label)
+        if key and key not in keys:
+            keys.append(key)
+    return keys
 
 
 def _select_model(settings_win, key):
@@ -112,16 +211,29 @@ def _select_model(settings_win, key):
 def run_all_model_tests(executor):
     """Verify each Base AI Model can be set via Settings and that LIMA responds using it.
 
-    Per model: launch LIMA, open Settings, pick the model, Save, relaunch LIMA so the
-    new model loads, then send a question and confirm a response appears (vision check).
+    The model list is discovered from the live Settings dropdown first, then per model:
+    launch LIMA, open Settings, pick the model, Save, relaunch LIMA so the new model
+    loads, then send a question and confirm a response appears (vision check).
     "Works" = a response is produced; verifying WHICH model served it isn't practical.
     """
     print("\n" + "=" * 60)
     print("TESTING ALL LIMA BASE AI MODELS")
     print("=" * 60)
 
-    total = len(MODEL_KEYS)
-    for i, key in enumerate(MODEL_KEYS, start=1):
+    # Discover the models the app currently offers so coverage tracks the live dropdown
+    # instead of a hardcoded list (robust to base-LLM additions/removals).
+    model_keys = _discover_available_models(executor)
+    if not model_keys:
+        executor.add_test_result("Model Discovery", TEST_FAILED,
+                                 "Could not read the Base AI Model dropdown to discover models")
+        print("  X Could not discover any models — skipping model tests")
+        executor.process_manager.close()
+        time.sleep(SLEEP_B)
+        return
+    print(f"Discovered {len(model_keys)} model(s): {', '.join(model_keys)}")
+
+    total = len(model_keys)
+    for i, key in enumerate(model_keys, start=1):
         result_name = f"Model Test: {key}"
         print("\n" + "-" * 50)
         print(f"MODEL TEST {i}/{total}: {key}")
