@@ -347,11 +347,23 @@ def find_lima_executable():
     Returns:
         str: Full path to LIMA executable if found, None otherwise
     """
-    search_paths = [
+    # As of 1.9.0.5 LIMA ships a per-user installer that lands in %LOCALAPPDATA%
+    # (no admin elevation), so prefer that; fall back to older Program Files
+    # (all-users) installs for previous versions.
+    search_paths = []
+    local_appdata = os.environ.get("LOCALAPPDATA")
+    if local_appdata:
+        search_paths += [
+            os.path.join(local_appdata, "LIMA Screen Reader"),
+            os.path.join(local_appdata, "Programs", "LIMA Screen Reader"),
+            os.path.join(local_appdata, "LIMA"),
+            os.path.join(local_appdata, "Programs", "LIMA"),
+        ]
+    search_paths += [
         r"C:\Program Files\LIMA Screen Reader",
         r"C:\Program Files (x86)\LIMA Screen Reader",
         r"C:\Program Files\LIMA",
-        r"C:\Program Files (x86)\LIMA"
+        r"C:\Program Files (x86)\LIMA",
     ]
 
     # Check potential executable names (setup.nsi uses "LIMA Screen Reader.exe")
