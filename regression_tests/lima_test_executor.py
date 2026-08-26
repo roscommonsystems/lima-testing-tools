@@ -82,9 +82,13 @@ class LimaTestExecutor:
             print("Checking API key availability...")
             if not initialize_openrouter_api_key():
                 print("ERROR: OPEN_ROUTER_API_KEY could not be retrieved. Aborting test run.")
-                print("  Hint: Make sure lima_config.json is properly configured with a valid license key.")
+                print("  Hint: sign into LIMA with your Google account first (the suite reuses that session),")
+                print("        set LIMA_FIREBASE_API_KEY or secret_config.py, and point lima_config.json at the")
+                print("        dev auth server. See the exact reason printed just above.")
                 self.reporter.finalize_results()
-                self._msgbox("LIMA Tests Aborted", "Could not retrieve API key.\n\nCheck lima_config.json has a valid license key.", error=True)
+                self._msgbox("LIMA Tests Aborted",
+                             "Could not authenticate.\n\nSign into LIMA with your Google account, then re-run.\n"
+                             "(See the console for the exact reason.)", error=True)
                 return False
             print("  OK API key verified\n")
 

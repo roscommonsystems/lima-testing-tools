@@ -11,7 +11,7 @@ This testing suite automates functional testing of the LIMA Screen Reader applic
 - Windows operating system
 - LIMA Screen Reader installed on your system
 - Python 3.8 or higher
-- Valid LIMA license key
+- A LIMA account you can sign into with Google (LIMA 1.9.0.5+ uses Google sign-in, not license keys)
 
 ## Setup
 
@@ -23,18 +23,32 @@ pip install -r requirements.txt
 
 ### 2. Configure Authentication
 
-Create a `lima_config.json` file in the project root with your authentication server URL and license key:
+As of LIMA 1.9.0.5, sign-in moved from license keys to Google. The suite reuses your
+signed-in LIMA session to obtain the API keys it needs, so setup is:
+
+1. **Sign into LIMA once** with your Google account. LIMA stores the session; the suite reuses it.
+2. **Provide the Firebase Web API key** (used to silently refresh that session) one of two ways:
+   - copy `secret_config.py.example` to `secret_config.py` and fill in `FIREBASE_API_KEY`, **or**
+   - set the `LIMA_FIREBASE_API_KEY` environment variable.
+3. **Create `lima_config.json`** (copy from `lima_config.json.example`) pointing at the dev auth server:
 
 ```json
 {
-    "auth_url": "https://your-auth-server.example.com/validate",
-    "license_key": "YOUR_LICENSE_KEY_HERE"
+    "auth_url": "https://lima-auth-server-dev-136821954342.us-west1.run.app"
 }
 ```
 
-> **Note:** Contact Roscommon Systems to obtain the authentication server URL and a valid license key.
+Verify the setup before a full run (~5 seconds):
 
-> **Important:** Never commit `lima_config.json` to version control. This file is excluded via `.gitignore`.
+```bash
+python check_auth.py
+```
+
+A green `OPEN_ROUTER_API_KEY: present ... Ready to run` means you're set.
+
+> **Note:** Your LIMA account must be provisioned on the target (dev) auth server for it to return keys.
+
+> **Important:** Never commit `lima_config.json` or `secret_config.py` — both are excluded via `.gitignore`.
 
 ## Running Tests
 
@@ -66,36 +80,45 @@ lima-testing-suite/
 ├── requirements.txt            # Python dependencies
 ├── main.py                     # Main entry point
 ├── run_regression_tests.bat    # Windows batch launcher
-├── lima_auth.py                # Authentication module
-├── lima_config.json.example    # Example config file
+├── lima_auth.py                # Authentication (reuses your signed-in LIMA Google session)
+├── check_auth.py               # Quick auth-setup verification before a run
+├── lima_config.json.example    # Example config (auth_url only)
+├── secret_config.py.example    # Example Firebase Web API key file (copy to secret_config.py)
 └── regression_tests/
     ├── lima_process_manager.py     # LIMA application lifecycle management
     ├── lima_test_executor.py       # Test execution logic
     ├── lima_test_reporter.py       # Result reporting
     ├── lima_test_utils.py          # Utility functions
     ├── lima_tool_tests.py          # AI tool test scenarios
+    ├── lima_model_tests.py         # Base AI model-coverage sweep
     ├── lima_voice_tests.py         # TTS voice-coverage sweep
     └── lima_settings_tests.py      # Settings hotkey-reconfigure regression guard
 ```
 
 ## Security Notes
 
-- **Never commit sensitive files:** `lima_config.json` contains your credentials and is excluded from version control.
-- **License keys are personal:** Do not share your license key or include it in public repositories.
-- **API keys are retrieved dynamically:** The authentication server provides API keys at runtime; they are never stored in code.
+- **Never commit sensitive files:** `lima_config.json` and `secret_config.py` are excluded from version control.
+- **The Firebase Web API key is a shared project value, not personal:** keep it in the gitignored `secret_config.py` (or an env var), never in committed code.
+- **API keys are retrieved dynamically:** the auth server provides them at runtime via your signed-in session; they are never stored in code.
 
 ## Troubleshooting
 
 ### "Config file not found"
-Create `lima_config.json` using the example file as a template.
+Create `lima_config.json` from `lima_config.json.example`.
 
-### "license_key not found in config file"
-Add your `license_key` to the `lima_config.json` file.
+### "No LIMA sign-in session found"
+Sign into LIMA with your Google account first — the suite reuses that session.
 
-### "License validation failed"
-- Verify your license key is correct and active
-- Check that the `auth_url` in your config file is correct
-- Ensure you have network connectivity to the authentication server
+### "LIMA_FIREBASE_API_KEY is not set"
+Create `secret_config.py` from `secret_config.py.example` (or set the env var).
+
+### "Could not refresh the LIMA session"
+Your session expired or was revoked. Open LIMA, sign in again, then re-run.
+
+### "Authentication failed" / no OpenRouter key returned
+- Check `auth_url` points at the correct (dev) auth server
+- Confirm your LIMA account is provisioned on that server
+- Ensure network connectivity to the auth server
 
 ## License
 

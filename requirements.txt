@@ -9,3 +9,4 @@ uiautomation>=2.0.0
 pyttsx3>=2.90
 pycaw>=20230407
 comtypes>=1.2.0
+keyring>=24.0.0
