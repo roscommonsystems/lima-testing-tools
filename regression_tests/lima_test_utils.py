@@ -607,7 +607,7 @@ def maximize_window(window):
 
 def initialize_openrouter_api_key():
     """
-    Initialize the OpenRouter API key by validating the license key from activation_key.txt.
+    Initialize the OpenRouter API key by reusing the signed-in LIMA session (see lima_auth).
 
     Returns:
         bool: True if API key was successfully initialized, False otherwise
@@ -617,7 +617,7 @@ def initialize_openrouter_api_key():
         return True
 
     try:
-        print(f"  [API] Validating license key to retrieve OpenRouter API key...")
+        print(f"  [API] Retrieving the OpenRouter API key via your LIMA sign-in session...")
 
         # Use LimaAuth to validate license and get API keys
         auth = LimaAuth()
@@ -637,7 +637,7 @@ def initialize_openrouter_api_key():
                 return False
         else:
             error_msg = validation_result.get('error', 'Unknown error')
-            print(f"WARNING: License validation failed: {error_msg}")
+            print(f"WARNING: Authentication failed: {error_msg}")
             return False
 
     except Exception as e:

@@ -1,9 +1,27 @@
 """
 LIMA Authentication Module for Testing Suite
 
-This module provides minimal authentication functionality for the regression test suite.
-It reads configuration from a user-provided config file and validates license keys
-against the LIMA authentication server.
+As of LIMA 1.9.0.5 sign-in moved from license keys to Google (Firebase). Rather than
+re-implement Google sign-in here, this module REUSES the LIMA desktop app's existing
+signed-in session to obtain the API keys the suite needs (notably OPEN_ROUTER_API_KEY for
+vision verification) with no browser prompt:
+
+    1. Read the refresh token LIMA stored in the OS keyring when the tester signed in.
+    2. Silently exchange it for a fresh Firebase ID token (securetoken endpoint).
+    3. Present that token as a Bearer credential to the auth server, which returns the keys.
+
+This mirrors exactly what the LIMA client does (firebase_auth.py / authentication.py), so
+the suite authenticates like a real signed-in user without duplicating the OAuth flow.
+
+Prerequisites (see lima_config.json.example and the prod-gate checklist):
+    * The tester must be signed into LIMA once (Google). We reuse that stored session.
+    * Set the LIMA_FIREBASE_API_KEY environment variable to the Firebase Web API key for
+      the token-refresh step. It is kept OUT of the repo (as the LIMA client keeps it out
+      of git); it is not a true secret but does not belong in source control.
+    * lima_config.json holds only the dev auth server URL (auth_url) — no license key.
+
+The public interface (LimaAuth.validate_license() -> dict with an 'api_keys' entry) is
+deliberately unchanged, so the rest of the suite is unaffected.
 """
 
 import json
@@ -14,165 +32,183 @@ from typing import Optional, Dict, Any
 import requests
 from time import sleep
 
+# Integration constants mirrored from the LIMA client (firebase_auth.py). Not secrets:
+# the app stores its session under these keyring names and refreshes tokens at this URL.
+KEYRING_SERVICE = "LIMA"
+KEYRING_USERNAME = "firebase_refresh_token"
+SECURE_TOKEN_URL = "https://securetoken.googleapis.com/v1/token"
+
 
 class LimaAuth:
-    """Handles license validation and API key retrieval for LIMA testing."""
-    
+    """Reuses the LIMA app's Google sign-in session to retrieve API keys for testing."""
+
     DEFAULT_CONFIG_PATH = "lima_config.json"
-    
+
     def __init__(self, config_path: Optional[str] = None):
-        """
-        Initialize the authentication module.
-        
-        Args:
-            config_path: Path to config file (default: lima_config.json)
-        """
         self.config_path = config_path or self.DEFAULT_CONFIG_PATH
         self._api_keys: Dict[str, str] = {}
         self._config: Dict[str, Any] = {}
-        
+
     def _load_config(self) -> Dict[str, Any]:
-        """
-        Load configuration from JSON file.
-        
-        Returns:
-            Dict containing configuration values
-            
-        Raises:
-            FileNotFoundError: If config file doesn't exist
-            json.JSONDecodeError: If config file is invalid JSON
-        """
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(
                 f"Config file not found: {self.config_path}\n"
-                f"Please create {self.config_path} with your authentication server URL and license key.\n"
-                f"See lima_config.json.example for the expected format."
+                f"Create it with the dev auth server URL. See lima_config.json.example."
             )
-        
         with open(self.config_path, 'r', encoding='utf-8') as f:
             return json.load(f)
-    
+
+    def _firebase_api_key(self) -> Optional[str]:
+        """Firebase Web API key used to refresh the reused LIMA session. Kept OUT of the
+        repo and sourced the same two ways the LIMA client allows:
+
+          1. the LIMA_FIREBASE_API_KEY environment variable, or
+          2. a gitignored secret_config.py on the path (the very file the LIMA client
+             uses) exposing FIREBASE_API_KEY.
+
+        A LIMA developer who already has secret_config.py gets this with zero extra setup.
+        """
+        env_key = os.environ.get("LIMA_FIREBASE_API_KEY", "").strip()
+        if env_key:
+            return env_key
+        try:
+            import secret_config  # gitignored; present in a LIMA dev checkout
+            return (getattr(secret_config, "FIREBASE_API_KEY", "") or "").strip() or None
+        except Exception:
+            return None
+
+    def _load_refresh_token(self) -> Optional[str]:
+        """Read the refresh token the LIMA desktop app stored when the tester signed in."""
+        try:
+            import keyring
+        except Exception as e:
+            logging.error("! keyring package unavailable, cannot read LIMA session: %s", e)
+            return None
+        try:
+            return keyring.get_password(KEYRING_SERVICE, KEYRING_USERNAME)
+        except Exception as e:
+            logging.error("! Failed to read LIMA session from keyring: %s", e)
+            return None
+
+    def _refresh_id_token(self, refresh_token: str, api_key: str) -> Optional[str]:
+        """Exchange the stored refresh token for a fresh 1-hour Firebase ID token."""
+        try:
+            resp = requests.post(
+                SECURE_TOKEN_URL + "?key=" + api_key,
+                data={"grant_type": "refresh_token", "refresh_token": refresh_token},
+                timeout=20,
+            )
+            data = resp.json() if resp.content else {}
+        except Exception as e:
+            logging.error("! LIMA session refresh request failed: %s", e)
+            return None
+        if resp.status_code != 200:
+            logging.error("! LIMA session refresh failed (HTTP %s): %s",
+                          resp.status_code, data.get("error"))
+            return None
+        return data.get("id_token")
+
     def validate_license(self, max_retries: int = 4) -> Dict[str, Any]:
+        """Authenticate via the reused LIMA session and return license_info with api_keys.
+
+        Name and return shape kept for compatibility with the rest of the suite.
         """
-        Validate the license key against the authentication server.
-        
-        Args:
-            max_retries: Maximum number of retry attempts for transient failures
-            
-        Returns:
-            Dict containing validation result and API keys if successful
-        """
-        # Load config
         try:
             self._config = self._load_config()
         except (FileNotFoundError, json.JSONDecodeError) as e:
             return {'valid': False, 'error': str(e)}
-        
-        # Get license key from config
-        license_key = self._config.get('license_key')
-        if not license_key or not isinstance(license_key, str) or len(license_key.strip()) == 0:
-            return {'valid': False, 'error': 'license_key not found in config file or is empty'}
-        
-        # Get auth URL from config
+
         auth_url = self._config.get('auth_url')
         if not auth_url:
             return {'valid': False, 'error': 'auth_url not found in config file'}
-        
-        payload = {'license_key': license_key.strip()}
-        
+
+        refresh_token = self._load_refresh_token()
+        if not refresh_token:
+            return {'valid': False, 'error':
+                    'No LIMA sign-in session found. Sign into LIMA with your Google '
+                    'account first — the suite reuses that session.'}
+
+        api_key = self._firebase_api_key()
+        if not api_key:
+            return {'valid': False, 'error':
+                    'LIMA_FIREBASE_API_KEY is not set. Set it to the Firebase Web API key '
+                    'so the stored LIMA session can be refreshed.'}
+
+        id_token = self._refresh_id_token(refresh_token, api_key)
+        if not id_token:
+            return {'valid': False, 'error':
+                    'Could not refresh the LIMA session (it may be expired or revoked). '
+                    'Open LIMA, sign in again, then re-run.'}
+
+        headers = {
+            'Authorization': 'Bearer ' + id_token,
+            'User-Agent': 'LIMA-Regression-Tests',
+        }
+
         retry_delay = 1
         max_retry_delay = 30
-        
+
         for attempt in range(max_retries):
             try:
-                response = requests.post(auth_url, json=payload, timeout=20)
-                
+                response = requests.post(auth_url, headers=headers, json={}, timeout=20)
+
                 try:
                     data = response.json() if response.content else {}
                 except ValueError as e:
                     if attempt == max_retries - 1:
                         return {'valid': False, 'error': f'Invalid JSON response: {str(e)}'}
                     raise ValueError(f"Invalid JSON response: {str(e)}")
-                
+
                 if response.status_code == 200:
                     if not response.content:
                         return {}
-                    
+
                     license_info = data.get('license_info', {})
                     api_keys = {
-                        'GROQ_API_KEY': data.get('GROQ_API_KEY'),
                         'OPEN_ROUTER_API_KEY': data.get('OPEN_ROUTER_API_KEY'),
-                        'CHIRP_API_KEY': data.get('CHIRP_API_KEY')
+                        'LIMA_AI_SERVER_KEY': data.get('LIMA_AI_SERVER_KEY'),
+                        'TAVILY_API_KEY': data.get('TAVILY_API_KEY'),
                     }
-                    
                     if 'valid' not in license_info:
                         license_info['valid'] = True
-                    
                     license_info['api_keys'] = api_keys
                     self._api_keys = api_keys
-                    
                     return license_info
-                    
-                elif response.status_code in (400, 401, 422):
-                    error_msg = data.get('message', 'Validation failed')
-                    if 'error' in data:
-                        error_msg = data['error']
+
+                elif response.status_code in (400, 401, 403, 422):
+                    error_msg = data.get('error') or data.get('message') or 'Authentication failed'
                     return {'valid': False, 'error': error_msg}
                 else:
-                    logging.error(f"License validation failed: HTTP {response.status_code}")
+                    logging.error("Auth server error: HTTP %s", response.status_code)
                     raise requests.RequestException(f"Unexpected status: {response.status_code}")
-                    
+
             except requests.RequestException as e:
-                logging.debug(f"License validation attempt {attempt + 1} failed: {str(e)}")
+                logging.debug("Auth attempt %s failed: %s", attempt + 1, str(e))
                 if attempt == max_retries - 1:
                     return {'valid': False, 'error': str(e)}
-                logging.debug(f"Retrying in {retry_delay} seconds")
                 sleep(retry_delay)
                 retry_delay = min(retry_delay * 2, max_retry_delay)
-                
+
             except ValueError as e:
-                logging.debug(f"JSON error attempt {attempt + 1}: {str(e)}")
+                logging.debug("JSON error attempt %s: %s", attempt + 1, str(e))
                 if attempt == max_retries - 1:
                     return {'valid': False, 'error': str(e)}
                 sleep(retry_delay)
                 retry_delay = min(retry_delay * 2, max_retry_delay)
-        
+
         return {'valid': False, 'error': 'Connection timed out'}
-    
+
     def get_api_key(self, key_name: str) -> Optional[str]:
-        """
-        Get a specific API key by name.
-        
-        Args:
-            key_name: Name of the API key (e.g., 'OPEN_ROUTER_API_KEY')
-            
-        Returns:
-            str: The API key if available, None otherwise
-        """
+        """Get a specific API key by name (e.g. 'OPEN_ROUTER_API_KEY')."""
         return self._api_keys.get(key_name)
-    
+
     def get_all_api_keys(self) -> Dict[str, str]:
-        """
-        Get all retrieved API keys.
-        
-        Returns:
-            Dict containing all API keys
-        """
+        """Get all retrieved API keys."""
         return self._api_keys.copy()
 
 
 # Convenience function for backward compatibility
 def validate_license(max_retries: int = 4) -> Dict[str, Any]:
-    """
-    Validate license key (convenience function).
-    
-    Note: This function reads the license key from lima_config.json file.
-    
-    Args:
-        max_retries: Maximum retry attempts
-        
-    Returns:
-        Dict containing validation result
-    """
+    """Authenticate via the reused LIMA session (convenience wrapper)."""
     auth = LimaAuth()
     return auth.validate_license(max_retries)

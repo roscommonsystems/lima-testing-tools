@@ -1,5 +1,6 @@
 # Sensitive configuration files
 lima_config.json
+secret_config.py
 *.key
 *.pem
 

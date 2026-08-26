@@ -1,4 +1,3 @@
 {
-    "auth_url": "https://your-auth-server.example.com/validate",
-    "license_key": "YOUR_LIMA_LICENSE_KEY_HERE"
+    "auth_url": "https://lima-auth-server-dev-136821954342.us-west1.run.app"
 }
