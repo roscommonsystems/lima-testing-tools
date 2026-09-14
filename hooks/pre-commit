@@ -1,0 +1,5 @@
+#!/bin/sh
+# Git runs this before each commit. On Windows it executes via Git-for-Windows' bundled
+# sh, so this shim works cross-platform. It just delegates to the Python scanner; a
+# non-zero exit aborts the commit.
+python hooks/pre_commit_scan.py

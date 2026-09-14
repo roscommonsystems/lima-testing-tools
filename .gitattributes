@@ -1,0 +1,3 @@
+# Keep the git hook shim LF-only so /bin/sh (including Git for Windows) can run it;
+# a CRLF in the shebang line would break the hook.
+hooks/pre-commit text eol=lf
