@@ -607,7 +607,7 @@ def maximize_window(window):
 
 def initialize_openrouter_api_key():
     """
-    Initialize the OpenRouter API key by reusing the signed-in LIMA session (see lima_auth).
+    Initialize the OpenRouter API key via lima_auth.
 
     Returns:
         bool: True if API key was successfully initialized, False otherwise
@@ -617,7 +617,7 @@ def initialize_openrouter_api_key():
         return True
 
     try:
-        print(f"  [API] Retrieving the OpenRouter API key via your LIMA sign-in session...")
+        print(f"  [API] Retrieving the OpenRouter API key...")
 
         # Use LimaAuth to validate license and get API keys
         auth = LimaAuth()
@@ -666,7 +666,7 @@ def verify_tool_with_screenshots(before_screenshot, after_screenshot, tool_name,
         open_router_api_key = _api_keys.get('OPEN_ROUTER_API_KEY', None)
         if not open_router_api_key or str(open_router_api_key).strip() == "":
             print("WARNING: OPEN_ROUTER_API_KEY not found")
-            print("  Hint: Make sure activation_key.txt and lima_config.json are properly configured")
+            print("  Hint: sign into LIMA, then configure secret_config.py / lima_config.json (see README)")
             return None
 
         # Convert screenshots to base64

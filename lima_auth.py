@@ -1,27 +1,19 @@
 """
 LIMA Authentication Module for Testing Suite
 
-As of LIMA 1.9.0.5 sign-in moved from license keys to Google (Firebase). Rather than
-re-implement Google sign-in here, this module REUSES the LIMA desktop app's existing
-signed-in session to obtain the API keys the suite needs (notably OPEN_ROUTER_API_KEY for
-vision verification) with no browser prompt:
+Obtains the API keys the suite needs (notably OPEN_ROUTER_API_KEY, used for vision
+verification) by reusing the tester's existing LIMA sign-in, so no browser prompt or
+separate credentials are required.
 
-    1. Read the refresh token LIMA stored in the OS keyring when the tester signed in.
-    2. Silently exchange it for a fresh Firebase ID token (securetoken endpoint).
-    3. Present that token as a Bearer credential to the auth server, which returns the keys.
-
-This mirrors exactly what the LIMA client does (firebase_auth.py / authentication.py), so
-the suite authenticates like a real signed-in user without duplicating the OAuth flow.
-
-Prerequisites (see lima_config.json.example and the prod-gate checklist):
-    * The tester must be signed into LIMA once (Google). We reuse that stored session.
-    * Set the LIMA_FIREBASE_API_KEY environment variable to the Firebase Web API key for
-      the token-refresh step. It is kept OUT of the repo (as the LIMA client keeps it out
-      of git); it is not a true secret but does not belong in source control.
-    * lima_config.json holds only the dev auth server URL (auth_url) — no license key.
+Prerequisites (see lima_config.json.example):
+    * The tester must be signed into LIMA once beforehand.
+    * Provide the Firebase Web API key via the LIMA_FIREBASE_API_KEY environment variable,
+      or a gitignored secret_config.py exposing FIREBASE_API_KEY. It is kept out of source
+      control.
+    * lima_config.json holds the auth server URL (auth_url).
 
 The public interface (LimaAuth.validate_license() -> dict with an 'api_keys' entry) is
-deliberately unchanged, so the rest of the suite is unaffected.
+kept stable, so the rest of the suite is unaffected.
 """
 
 import json
@@ -32,8 +24,7 @@ from typing import Optional, Dict, Any
 import requests
 from time import sleep
 
-# Integration constants mirrored from the LIMA client (firebase_auth.py). Not secrets:
-# the app stores its session under these keyring names and refreshes tokens at this URL.
+# Session storage location and the token-refresh endpoint.
 KEYRING_SERVICE = "LIMA"
 KEYRING_USERNAME = "firebase_refresh_token"
 SECURE_TOKEN_URL = "https://securetoken.googleapis.com/v1/token"
@@ -59,14 +50,11 @@ class LimaAuth:
             return json.load(f)
 
     def _firebase_api_key(self) -> Optional[str]:
-        """Firebase Web API key used to refresh the reused LIMA session. Kept OUT of the
-        repo and sourced the same two ways the LIMA client allows:
+        """Firebase Web API key used to refresh the session. Kept out of the repo and
+        sourced either way:
 
           1. the LIMA_FIREBASE_API_KEY environment variable, or
-          2. a gitignored secret_config.py on the path (the very file the LIMA client
-             uses) exposing FIREBASE_API_KEY.
-
-        A LIMA developer who already has secret_config.py gets this with zero extra setup.
+          2. a gitignored secret_config.py on the path exposing FIREBASE_API_KEY.
         """
         env_key = os.environ.get("LIMA_FIREBASE_API_KEY", "").strip()
         if env_key:
@@ -78,7 +66,7 @@ class LimaAuth:
             return None
 
     def _load_refresh_token(self) -> Optional[str]:
-        """Read the refresh token the LIMA desktop app stored when the tester signed in."""
+        """Read the stored LIMA session token."""
         try:
             import keyring
         except Exception as e:
@@ -109,7 +97,7 @@ class LimaAuth:
         return data.get("id_token")
 
     def validate_license(self, max_retries: int = 4) -> Dict[str, Any]:
-        """Authenticate via the reused LIMA session and return license_info with api_keys.
+        """Authenticate and return license_info with api_keys.
 
         Name and return shape kept for compatibility with the rest of the suite.
         """
@@ -209,6 +197,6 @@ class LimaAuth:
 
 # Convenience function for backward compatibility
 def validate_license(max_retries: int = 4) -> Dict[str, Any]:
-    """Authenticate via the reused LIMA session (convenience wrapper)."""
+    """Authenticate and return license_info with api_keys (convenience wrapper)."""
     auth = LimaAuth()
     return auth.validate_license(max_retries)

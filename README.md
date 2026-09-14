@@ -11,7 +11,7 @@ This testing suite automates functional testing of the LIMA Screen Reader applic
 - Windows operating system
 - LIMA Screen Reader installed on your system
 - Python 3.8 or higher
-- A LIMA account you can sign into with Google (LIMA 1.9.0.5+ uses Google sign-in, not license keys)
+- A LIMA account you can sign into
 
 ## Setup
 
@@ -23,20 +23,13 @@ pip install -r requirements.txt
 
 ### 2. Configure Authentication
 
-As of LIMA 1.9.0.5, sign-in moved from license keys to Google. The suite reuses your
-signed-in LIMA session to obtain the API keys it needs, so setup is:
+The suite uses your existing LIMA sign-in to obtain the API keys it needs, so setup is:
 
-1. **Sign into LIMA once** with your Google account. LIMA stores the session; the suite reuses it.
-2. **Provide the Firebase Web API key** (used to silently refresh that session) one of two ways:
+1. **Sign into LIMA once** beforehand.
+2. **Provide the Firebase Web API key** one of two ways:
    - copy `secret_config.py.example` to `secret_config.py` and fill in `FIREBASE_API_KEY`, **or**
    - set the `LIMA_FIREBASE_API_KEY` environment variable.
-3. **Create `lima_config.json`** (copy from `lima_config.json.example`) pointing at the dev auth server:
-
-```json
-{
-    "auth_url": "https://lima-auth-server-dev-136821954342.us-west1.run.app"
-}
-```
+3. **Create `lima_config.json`** by copying `lima_config.json.example` and setting `auth_url`.
 
 Verify the setup before a full run (~5 seconds):
 
@@ -46,7 +39,7 @@ python check_auth.py
 
 A green `OPEN_ROUTER_API_KEY: present ... Ready to run` means you're set.
 
-> **Note:** Your LIMA account must be provisioned on the target (dev) auth server for it to return keys.
+> **Note:** Your LIMA account must be provisioned on the auth server for it to return keys.
 
 > **Important:** Never commit `lima_config.json` or `secret_config.py` — both are excluded via `.gitignore`.
 
@@ -80,7 +73,7 @@ lima-testing-suite/
 ├── requirements.txt            # Python dependencies
 ├── main.py                     # Main entry point
 ├── run_regression_tests.bat    # Windows batch launcher
-├── lima_auth.py                # Authentication (reuses your signed-in LIMA Google session)
+├── lima_auth.py                # Authentication for the suite
 ├── check_auth.py               # Quick auth-setup verification before a run
 ├── lima_config.json.example    # Example config (auth_url only)
 ├── secret_config.py.example    # Example Firebase Web API key file (copy to secret_config.py)
@@ -98,8 +91,8 @@ lima-testing-suite/
 ## Security Notes
 
 - **Never commit sensitive files:** `lima_config.json` and `secret_config.py` are excluded from version control.
-- **The Firebase Web API key is a shared project value, not personal:** keep it in the gitignored `secret_config.py` (or an env var), never in committed code.
-- **API keys are retrieved dynamically:** the auth server provides them at runtime via your signed-in session; they are never stored in code.
+- **Keep the Firebase Web API key out of code:** keep it in the gitignored `secret_config.py` (or an env var), never in committed code.
+- **API keys are retrieved dynamically:** they are provided at runtime, never stored in code.
 
 ## Troubleshooting
 
@@ -107,7 +100,7 @@ lima-testing-suite/
 Create `lima_config.json` from `lima_config.json.example`.
 
 ### "No LIMA sign-in session found"
-Sign into LIMA with your Google account first — the suite reuses that session.
+Sign into LIMA first; the suite uses that session.
 
 ### "LIMA_FIREBASE_API_KEY is not set"
 Create `secret_config.py` from `secret_config.py.example` (or set the env var).
@@ -116,7 +109,7 @@ Create `secret_config.py` from `secret_config.py.example` (or set the env var).
 Your session expired or was revoked. Open LIMA, sign in again, then re-run.
 
 ### "Authentication failed" / no OpenRouter key returned
-- Check `auth_url` points at the correct (dev) auth server
+- Check `auth_url` points at the correct auth server
 - Confirm your LIMA account is provisioned on that server
 - Ensure network connectivity to the auth server
 

@@ -1,16 +1,15 @@
 """
-check_auth.py - quick verification that the suite can authenticate for LIMA 1.9.0.5+.
+check_auth.py - quick verification that the suite can authenticate.
 
-Confirms the suite can obtain OPEN_ROUTER_API_KEY from the auth server by reusing your
-signed-in LIMA session, WITHOUT running the full regression suite. Use it to verify setup
-before a run so a misconfiguration fails in seconds instead of mid-run.
+Confirms the suite can obtain OPEN_ROUTER_API_KEY WITHOUT running the full regression
+suite. Use it to verify setup before a run so a misconfiguration fails in seconds instead
+of mid-run.
 
 Prerequisites:
-  1. LIMA 1.9.0.5+ installed and signed in with your Google account.
+  1. LIMA installed and signed in beforehand.
   2. The Firebase Web API key provided via the LIMA_FIREBASE_API_KEY environment variable
-     OR a gitignored secret_config.py on the path (FIREBASE_API_KEY = "...") - the same
-     file the LIMA client uses, so a LIMA dev checkout already has it.
-  3. lima_config.json contains the dev auth server URL (see lima_config.json.example).
+     OR a gitignored secret_config.py on the path (FIREBASE_API_KEY = "...").
+  3. lima_config.json contains the auth server URL (see lima_config.json.example).
 
 Run (from the project root, inside the venv):
   python check_auth.py
