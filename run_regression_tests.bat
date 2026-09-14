@@ -107,9 +107,8 @@ if exist "lima_config.json" (
     echo your authentication details.
     echo.
     
-    REM Prompt for the dev auth server URL. License keys are no longer used - LIMA 1.9.0.5+
-    REM uses Google sign-in and the suite reuses your signed-in LIMA session (see lima_auth.py).
-    set /p AUTH_URL="Enter the dev auth server URL: "
+    REM Prompt for the auth server URL (see lima_config.json.example).
+    set /p AUTH_URL="Enter the auth server URL: "
     if "!AUTH_URL!"=="" (
         echo.
         echo ERROR: Auth server URL cannot be empty.

@@ -31,7 +31,7 @@ SECURE_TOKEN_URL = "https://securetoken.googleapis.com/v1/token"
 
 
 class LimaAuth:
-    """Reuses the LIMA app's Google sign-in session to retrieve API keys for testing."""
+    """Retrieves API keys for the suite by reusing the tester's existing LIMA sign-in."""
 
     DEFAULT_CONFIG_PATH = "lima_config.json"
 
@@ -44,7 +44,7 @@ class LimaAuth:
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(
                 f"Config file not found: {self.config_path}\n"
-                f"Create it with the dev auth server URL. See lima_config.json.example."
+                f"Create it with the auth server URL. See lima_config.json.example."
             )
         with open(self.config_path, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -113,8 +113,7 @@ class LimaAuth:
         refresh_token = self._load_refresh_token()
         if not refresh_token:
             return {'valid': False, 'error':
-                    'No LIMA sign-in session found. Sign into LIMA with your Google '
-                    'account first — the suite reuses that session.'}
+                    'No LIMA sign-in session found. Sign into LIMA first, then re-run.'}
 
         api_key = self._firebase_api_key()
         if not api_key:
