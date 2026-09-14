@@ -46,3 +46,18 @@ __pycache__/
 
 # Logs
 *.log
+# Local agent / assistant config (machine-specific; keep out of the public repo)
+.claude/
+
+# pip / packaging outputs
+pip-log.txt
+pip-delete-this-directory.txt
+pip-wheel-metadata/
+
+# Python test / type / lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
