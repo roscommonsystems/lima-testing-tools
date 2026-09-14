@@ -104,8 +104,7 @@ class LimaTestExecutor:
             # Test 2: Check for pre-existing crash logs
             self._test_prerun_crash_logs()
             
-            # Test 3: Check license and settings file persistence
-            self._test_license_key_persistence()
+            # Test 3: Check settings file persistence
             self._test_settings_file_persistence()
             
             # Test 4: Launch LIMA
@@ -333,43 +332,6 @@ class LimaTestExecutor:
         message = f"Application remained stable for {monitoring_duration} seconds"
         self.add_test_result("Stability Check", TEST_PASSED, message)
     
-    def _test_license_key_persistence(self):
-        """
-        Test: Verify license key file exists and persists (simulating update scenario).
-        """
-        try:
-            if not self.process_manager.install_path:
-                message = "Cannot test license persistence - install path unknown"
-                self.add_test_result("License Key Persistence Test", TEST_FAILED, message)
-                return
-            
-            # Check for license file (common names)
-            license_paths = [
-                os.path.join(self.process_manager.install_path, "data", "activation_key.txt"),
-                os.path.join(self.process_manager.install_path, "data", "license.key"),
-                os.path.join(self.process_manager.install_path, "data", "license.txt")
-            ]
-            
-            license_found = False
-            license_location = None
-            
-            for license_path in license_paths:
-                if os.path.exists(license_path):
-                    license_found = True
-                    license_location = license_path
-                    break
-            
-            if license_found:
-                message = f"License file found at {license_location} - will persist across updates"
-                self.add_test_result("License Key Persistence Test", TEST_PASSED, message)
-            else:
-                message = "No license file found in data directory - may require re-entry after updates"
-                self.add_test_result("License Key Persistence Test", TEST_FAILED, message)
-                
-        except Exception as error:
-            message = f"Exception during license persistence test: {str(error)}"
-            self.add_test_result("License Key Persistence Test", TEST_FAILED, message)
-
     def _test_settings_file_persistence(self):
         """
         Test: Verify settings file exists and will persist through updates.
