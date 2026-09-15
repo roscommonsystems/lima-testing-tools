@@ -26,10 +26,8 @@ pip install -r requirements.txt
 The suite uses your existing LIMA sign-in to obtain the API keys it needs, so setup is:
 
 1. **Sign into LIMA once** beforehand.
-2. **Provide the Firebase Web API key** one of two ways:
-   - copy `secret_config.py.example` to `secret_config.py` and fill in `FIREBASE_API_KEY`, **or**
-   - set the `LIMA_FIREBASE_API_KEY` environment variable.
-3. **Create `lima_config.json`** by copying `lima_config.json.example` and setting `auth_url`.
+2. **Create `secret_config.py`** — copy `secret_config.py.example` to `secret_config.py` and fill in both `FIREBASE_API_KEY` and `AUTH_URL` (the file explains where to find each). This is the only file you need to set up.
+   - Alternatively, each value can be supplied via an environment variable instead: `LIMA_FIREBASE_API_KEY` and `LIMA_AUTH_URL`.
 
 Verify the setup before a full run (~5 seconds):
 
@@ -41,7 +39,7 @@ A green `OPEN_ROUTER_API_KEY: present ... Ready to run` means you're set.
 
 > **Note:** Your LIMA account must be provisioned on the auth server for it to return keys.
 
-> **Important:** Never commit `lima_config.json` or `secret_config.py` — both are excluded via `.gitignore`.
+> **Important:** Never commit `secret_config.py` — it is excluded via `.gitignore`.
 
 ## Running Tests
 
@@ -75,8 +73,7 @@ lima-testing-suite/
 ├── run_regression_tests.bat    # Windows batch launcher
 ├── lima_auth.py                # Authentication for the suite
 ├── check_auth.py               # Quick auth-setup verification before a run
-├── lima_config.json.example    # Example config (auth_url only)
-├── secret_config.py.example    # Example Firebase Web API key file (copy to secret_config.py)
+├── secret_config.py.example    # Example config: copy to secret_config.py, fill in both values
 └── regression_tests/
     ├── lima_process_manager.py     # LIMA application lifecycle management
     ├── lima_test_executor.py       # Test execution logic
@@ -90,26 +87,26 @@ lima-testing-suite/
 
 ## Security Notes
 
-- **Never commit sensitive files:** `lima_config.json` and `secret_config.py` are excluded from version control.
-- **Keep the Firebase Web API key out of code:** keep it in the gitignored `secret_config.py` (or an env var), never in committed code.
+- **Never commit sensitive files:** `secret_config.py` is excluded from version control.
+- **Keep credentials out of code:** keep `FIREBASE_API_KEY` and `AUTH_URL` in the gitignored `secret_config.py` (or in env vars), never in committed code.
 - **API keys are retrieved dynamically:** they are provided at runtime, never stored in code.
 
 ## Troubleshooting
 
-### "Config file not found"
-Create `lima_config.json` from `lima_config.json.example`.
+### "AUTH_URL is not set"
+Fill in `AUTH_URL` in `secret_config.py` (or set the `LIMA_AUTH_URL` env var).
 
 ### "No LIMA sign-in session found"
 Sign into LIMA first; the suite uses that session.
 
-### "LIMA_FIREBASE_API_KEY is not set"
-Create `secret_config.py` from `secret_config.py.example` (or set the env var).
+### "FIREBASE_API_KEY is not set"
+Fill in `FIREBASE_API_KEY` in `secret_config.py` (or set the `LIMA_FIREBASE_API_KEY` env var).
 
 ### "Could not refresh the LIMA session"
 Your session expired or was revoked. Open LIMA, sign in again, then re-run.
 
 ### "Authentication failed" / no OpenRouter key returned
-- Check `auth_url` points at the correct auth server
+- Check `AUTH_URL` points at the correct auth server
 - Confirm your LIMA account is provisioned on that server
 - Ensure network connectivity to the auth server
 

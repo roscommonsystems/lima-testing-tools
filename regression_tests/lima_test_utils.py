@@ -666,7 +666,7 @@ def verify_tool_with_screenshots(before_screenshot, after_screenshot, tool_name,
         open_router_api_key = _api_keys.get('OPEN_ROUTER_API_KEY', None)
         if not open_router_api_key or str(open_router_api_key).strip() == "":
             print("WARNING: OPEN_ROUTER_API_KEY not found")
-            print("  Hint: sign into LIMA, then configure secret_config.py / lima_config.json (see README)")
+            print("  Hint: sign into LIMA, then configure secret_config.py (see README)")
             return None
 
         # Convert screenshots to base64

@@ -5,18 +5,18 @@ Obtains the API keys the suite needs (notably OPEN_ROUTER_API_KEY, used for visi
 verification) by reusing the tester's existing LIMA sign-in, so no browser prompt or
 separate credentials are required.
 
-Prerequisites (see lima_config.json.example):
+Setup (see secret_config.py.example):
     * The tester must be signed into LIMA once beforehand.
-    * Provide the Firebase Web API key via the LIMA_FIREBASE_API_KEY environment variable,
-      or a gitignored secret_config.py exposing FIREBASE_API_KEY. It is kept out of source
-      control.
-    * lima_config.json holds the auth server URL (auth_url).
+    * Create a single gitignored secret_config.py holding both:
+          FIREBASE_API_KEY - the Firebase Web API key, used to refresh the LIMA session.
+          AUTH_URL         - the base URL of the LIMA auth server.
+      Either value may instead be supplied via an environment variable
+      (LIMA_FIREBASE_API_KEY / LIMA_AUTH_URL), which takes precedence.
 
 The public interface (LimaAuth.validate_license() -> dict with an 'api_keys' entry) is
 kept stable, so the rest of the suite is unaffected.
 """
 
-import json
 import os
 import logging
 from typing import Optional, Dict, Any
@@ -29,41 +29,51 @@ KEYRING_SERVICE = "LIMA"
 KEYRING_USERNAME = "firebase_refresh_token"
 SECURE_TOKEN_URL = "https://securetoken.googleapis.com/v1/token"
 
+# Substrings that mark an unedited placeholder copied from secret_config.py.example.
+_PLACEHOLDER_MARKERS = ("YOUR-LIMA-AUTH-SERVER", "your Firebase Web API key here", "AIza...your")
+
+
+def _is_placeholder(value: Optional[str]) -> bool:
+    return bool(value) and any(marker in value for marker in _PLACEHOLDER_MARKERS)
+
 
 class LimaAuth:
     """Retrieves API keys for the suite by reusing the tester's existing LIMA sign-in."""
 
-    DEFAULT_CONFIG_PATH = "lima_config.json"
-
-    def __init__(self, config_path: Optional[str] = None):
-        self.config_path = config_path or self.DEFAULT_CONFIG_PATH
+    def __init__(self):
         self._api_keys: Dict[str, str] = {}
-        self._config: Dict[str, Any] = {}
 
-    def _load_config(self) -> Dict[str, Any]:
-        if not os.path.exists(self.config_path):
-            raise FileNotFoundError(
-                f"Config file not found: {self.config_path}\n"
-                f"Create it with the auth server URL. See lima_config.json.example."
-            )
-        with open(self.config_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-
-    def _firebase_api_key(self) -> Optional[str]:
-        """Firebase Web API key used to refresh the session. Kept out of the repo and
-        sourced either way:
-
-          1. the LIMA_FIREBASE_API_KEY environment variable, or
-          2. a gitignored secret_config.py on the path exposing FIREBASE_API_KEY.
-        """
-        env_key = os.environ.get("LIMA_FIREBASE_API_KEY", "").strip()
-        if env_key:
-            return env_key
+    @staticmethod
+    def _secret_config():
+        """The gitignored secret_config module, or None if it isn't importable."""
         try:
-            import secret_config  # gitignored; present in a LIMA dev checkout
-            return (getattr(secret_config, "FIREBASE_API_KEY", "") or "").strip() or None
+            import secret_config
+            return secret_config
         except Exception:
             return None
+
+    def _setting(self, env_var: str, attr: str) -> Optional[str]:
+        """Read a setting from its environment variable, else from secret_config.
+
+        Placeholder values left over from the example file count as unset.
+        """
+        env_value = os.environ.get(env_var, "").strip()
+        if env_value and not _is_placeholder(env_value):
+            return env_value
+        sc = self._secret_config()
+        if sc is not None:
+            value = (getattr(sc, attr, "") or "").strip()
+            if value and not _is_placeholder(value):
+                return value
+        return None
+
+    def _firebase_api_key(self) -> Optional[str]:
+        """Firebase Web API key used to refresh the LIMA session."""
+        return self._setting("LIMA_FIREBASE_API_KEY", "FIREBASE_API_KEY")
+
+    def _auth_url(self) -> Optional[str]:
+        """Base URL of the LIMA auth server."""
+        return self._setting("LIMA_AUTH_URL", "AUTH_URL")
 
     def _load_refresh_token(self) -> Optional[str]:
         """Read the stored LIMA session token."""
@@ -101,14 +111,11 @@ class LimaAuth:
 
         Name and return shape kept for compatibility with the rest of the suite.
         """
-        try:
-            self._config = self._load_config()
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            return {'valid': False, 'error': str(e)}
-
-        auth_url = self._config.get('auth_url')
+        auth_url = self._auth_url()
         if not auth_url:
-            return {'valid': False, 'error': 'auth_url not found in config file'}
+            return {'valid': False, 'error':
+                    'AUTH_URL is not set. Add it to secret_config.py '
+                    '(copy secret_config.py.example and fill it in).'}
 
         refresh_token = self._load_refresh_token()
         if not refresh_token:
@@ -118,8 +125,8 @@ class LimaAuth:
         api_key = self._firebase_api_key()
         if not api_key:
             return {'valid': False, 'error':
-                    'LIMA_FIREBASE_API_KEY is not set. Set it to the Firebase Web API key '
-                    'so the stored LIMA session can be refreshed.'}
+                    'FIREBASE_API_KEY is not set. Add it to secret_config.py so the '
+                    'stored LIMA session can be refreshed.'}
 
         id_token = self._refresh_id_token(refresh_token, api_key)
         if not id_token:

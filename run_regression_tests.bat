@@ -95,7 +95,7 @@ REM --------------------------------------------------
 REM Step 5: Check/Create configuration
 REM --------------------------------------------------
 echo [5/6] Checking configuration...
-if exist "lima_config.json" (
+if exist "secret_config.py" (
     echo       Configuration file found.
 ) else (
     echo.
@@ -103,29 +103,18 @@ if exist "lima_config.json" (
     echo LIMA Testing Suite - Configuration Required
     echo ==================================================
     echo.
-    echo This appears to be your first run. Please provide
-    echo your authentication details.
+    echo This appears to be your first run.
     echo.
-    
-    REM Prompt for the auth server URL (see lima_config.json.example).
-    set /p AUTH_URL="Enter the auth server URL: "
-    if "!AUTH_URL!"=="" (
-        echo.
-        echo ERROR: Auth server URL cannot be empty.
-        echo.
-        pause
-        exit /b 1
+    if exist "secret_config.py.example" (
+        copy /Y "secret_config.py.example" "secret_config.py" >nul
+        echo Created secret_config.py from the example.
     )
-
-    REM Create the config file (auth_url only)
-    echo {> lima_config.json
-    echo     "auth_url": "!AUTH_URL!">> lima_config.json
-    echo }>> lima_config.json
-    
-    echo.
-    echo       Configuration saved to lima_config.json
+    echo Open secret_config.py and fill in FIREBASE_API_KEY and AUTH_URL
+    echo ^(instructions are inside the file^), then run this script again.
     echo ==================================================
     echo.
+    pause
+    exit /b 1
 )
 echo.
 
