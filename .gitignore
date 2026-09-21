@@ -1,5 +1,6 @@
 # Sensitive configuration files
 secret_config.py
+lima_config.json
 *.key
 *.pem
 
@@ -31,6 +32,8 @@ build/
 # Test outputs
 test_results.json
 regression_tests/test_results.json
+regression_tests/*test_results*.json
+regression_summary*.txt
 
 # OS
 .DS_Store
