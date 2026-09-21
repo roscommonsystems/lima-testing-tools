@@ -48,20 +48,38 @@ def _find_settings_window(maxdepth=6):
 
 
 def _open_settings(executor):
-    """Open LIMA's Settings dialog; return the window control or None.
+    """Open LIMA's Settings dialog; return the UIA control or None.
 
     Minimizes other windows first so the Alt menu keystroke lands on LIMA, then
-    File menu via Alt -> Enter -> Enter (Settings is the first item).
+    File menu via Alt -> Enter -> Enter (Settings is the first item). A swallowed
+    keystroke (menu not focused, focus moved between calls, timing, etc.) would
+    otherwise leave the dialog unopened, so the sequence is retried a few times,
+    polling UIA after each attempt — the dialog can lag a moment settling into
+    the UI Automation tree.
     """
-    minimize_all_other_windows()
-    time.sleep(SLEEP_B)
-    executor.process_manager.refocus(timeout=10)
-    time.sleep(SLEEP_B)
-    pyautogui.press('escape'); time.sleep(SLEEP_A)
-    pyautogui.press('alt'); time.sleep(SLEEP_B)
-    pyautogui.press('enter'); time.sleep(SLEEP_B)
-    pyautogui.press('enter'); time.sleep(SLEEP_C)
-    return _find_settings_window()
+    for attempt in range(1, 4):
+        minimize_all_other_windows()
+        time.sleep(SLEEP_B)
+        executor.process_manager.refocus(timeout=10)
+        time.sleep(SLEEP_B)
+        pyautogui.press('escape'); time.sleep(SLEEP_A)
+        pyautogui.press('alt'); time.sleep(SLEEP_B)
+        pyautogui.press('enter'); time.sleep(SLEEP_B)
+        pyautogui.press('enter'); time.sleep(SLEEP_C)
+
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            win = _find_settings_window()
+            if win:
+                return win
+            time.sleep(SLEEP_A)
+
+        if attempt < 3:
+            print(f"  ! Settings dialog not open, retrying ({attempt}/3)")
+            pyautogui.press('escape')
+            time.sleep(SLEEP_A)
+
+    return None
 
 
 def _model_key(label):
@@ -165,50 +183,66 @@ def _discover_available_models(executor):
 
 
 def _select_model(settings_win, key):
-    """Expand the Base AI Model combo, click the item whose name contains `key`, and
-    return the combo's value afterwards (so the caller can confirm the change took)."""
+    """Select the model whose label contains ``key`` from the Base AI Model combo.
+
+    Uses the UIA SelectionItem pattern (falling back to a raw Click) and VERIFIES
+    the combo value actually changed, retrying up to 3 times — a plain click can
+    silently miss and leave the previously-selected model in place.
+    """
     combo = settings_win.ComboBoxControl(Name=MODEL_COMBO_NAME)
     if not combo.Exists(2):
         return None
-    try:
-        combo.GetExpandCollapsePattern().Expand()
-    except Exception as err:
-        print(err)
-        combo.Click()
-    time.sleep(SLEEP_B)
 
-    target = None
-    root = uia.GetRootControl()
-    stack = [(c, 0) for c in root.GetChildren()]
-    while stack:
-        ctrl, depth = stack.pop()
+    value = None
+    for _ in range(3):
         try:
-            if ctrl.ControlTypeName == "ListItemControl" and ctrl.Name and key in ctrl.Name:
-                target = ctrl
-                break
+            combo.GetExpandCollapsePattern().Expand()
         except Exception as err:
             print(err)
-        if depth < 8:
+            combo.Click()
+        time.sleep(SLEEP_B)
+
+        target = None
+        root = uia.GetRootControl()
+        stack = [(c, 0) for c in root.GetChildren()]
+        while stack:
+            ctrl, depth = stack.pop()
             try:
-                stack.extend((c, depth + 1) for c in ctrl.GetChildren())
+                if ctrl.ControlTypeName == "ListItemControl" and ctrl.Name and key in ctrl.Name:
+                    target = ctrl
+                    break
             except Exception as err:
                 print(err)
+            if depth < 8:
+                try:
+                    stack.extend((c, depth + 1) for c in ctrl.GetChildren())
+                except Exception as err:
+                    print(err)
 
-    if not target:
+        if target is not None:
+            try:
+                target.GetSelectionItemPattern().Select()
+            except Exception as err:
+                print(err)
+                target.Click()
+            time.sleep(SLEEP_B)
+
         try:
-            combo.GetExpandCollapsePattern().Collapse()
+            value = combo.GetValuePattern().Value
         except Exception as err:
             print(err)
-            pyautogui.press('escape')
-        return None
+            value = "<selected>"
+        if value and key in value:
+            return value
 
-    target.Click()
-    time.sleep(SLEEP_A)
-    try:
-        return combo.GetValuePattern().Value
-    except Exception as err:
-        print(err)
-        return "<selected>"
+        # Selection didn't take — close the dropdown and retry.
+        try:
+            combo.GetExpandCollapsePattern().Collapse()
+        except Exception:
+            pyautogui.press('escape')
+        time.sleep(SLEEP_A)
+
+    return value
 
 
 def run_all_model_tests(executor):
@@ -234,6 +268,19 @@ def run_all_model_tests(executor):
         time.sleep(SLEEP_B)
         return
     print(f"Discovered {len(model_keys)} model(s): {', '.join(model_keys)}")
+
+    # Each model test Saves a new base model into the installed config.json, so
+    # remember the app's original choice and restore it when the sweep finishes
+    # (mirrors the Settings Hotkey test, which also restores config.json after it).
+    import os
+    config_path = os.path.join(executor.process_manager.install_path, "data", "config.json")
+    original_model = None
+    try:
+        import json
+        with open(config_path, encoding='utf-8') as _f:
+            original_model = json.load(_f).get("base_ai_model")
+    except Exception as error:
+        print(f"  ! Could not read original base model from config: {error}")
 
     total = len(model_keys)
     for i, key in enumerate(model_keys, start=1):
@@ -340,6 +387,18 @@ def run_all_model_tests(executor):
         except Exception as error:
             executor.add_test_result(result_name, TEST_FAILED, f"Exception during {key}: {error}")
             print(f"  X Exception during {key}: {error}")
+
+    if original_model:
+        try:
+            import json
+            with open(config_path, encoding='utf-8') as _f:
+                config = json.load(_f)
+            config["base_ai_model"] = original_model
+            with open(config_path, 'w', encoding='utf-8') as _f:
+                json.dump(config, _f, indent=4)
+            print(f"  Restored original base model to config.json: {original_model}")
+        except Exception as error:
+            print(f"  ! Could not restore original base model: {error}")
 
     executor.process_manager.close()
     time.sleep(SLEEP_B)
