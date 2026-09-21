@@ -9,6 +9,7 @@ import json
 import time
 import base64
 import struct
+import ctypes
 import logging
 import threading
 from io import BytesIO
@@ -403,6 +404,118 @@ def find_process_by_name(exe_path):
         print(f"Error finding process: {error}")
 
     return None
+
+
+def enum_top_level_windows():
+    """Return every top-level window handle via Win32 EnumWindows.
+
+    Unlike ``pygetwindow.getAllWindows()`` this does NOT filter to visible
+    windows, so a LIMA window that is minimized (taskbar) or momentarily hidden
+    is still discoverable and can be restored to the foreground.
+    """
+    handles = []
+    WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)
+
+    def _callback(hwnd, _lparam):
+        if ctypes.windll.user32.IsWindow(hwnd):
+            handles.append(hwnd)
+        return True
+
+    ctypes.windll.user32.EnumWindows(WNDENUMPROC(_callback), 0)
+    return handles
+
+
+def get_window_title(hwnd):
+    """Return the title text of a top-level window handle ('' when empty)."""
+    length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+    buffer = ctypes.create_unicode_buffer(length + 1)
+    ctypes.windll.user32.GetWindowTextW(hwnd, buffer, length + 1)
+    return buffer.value
+
+
+def get_window_pid(hwnd):
+    """Return the PID of the process that owns the given window handle."""
+    pid = ctypes.c_ulong()
+    ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    return pid.value
+
+
+def find_windows_by_title(keyword, pid=None):
+    """Find top-level windows whose title contains ``keyword``.
+
+    Matching is case-sensitive on purpose: LIMA titles always use the uppercase
+    spelling ("LIMA Screen Reader", "LIMA - Loading", "LIMA Settings", ...), and
+    a case-insensitive search would false-positive on any window whose title
+    contains "lima" as part of another word (e.g. "lima-testing-tools").
+
+    Args:
+        keyword (str): Substring to search for in the window title.
+        pid (int, optional): When given, only windows owned by this process id.
+
+    Returns:
+        list: [(hwnd, title), ...] — EnumWindows enumerates in reverse
+        z-order, so the front-most (top) windows come first.
+    """
+    matches = []
+    for hwnd in enum_top_level_windows():
+        title = get_window_title(hwnd)
+        if not title:
+            continue
+        if keyword not in title:
+            continue
+        if pid is not None and get_window_pid(hwnd) != pid:
+            continue
+        matches.append((hwnd, title))
+    return matches
+
+
+def activate_window(hwnd):
+    """Restore and bring ``hwnd`` to the foreground.
+
+    Uses the standard Win32 "Alt" workaround before SetForegroundWindow so the
+    call works even though the test console is not the foreground process.
+
+    Returns:
+        bool: True when ``hwnd`` is the foreground window afterwards.
+    """
+    user32 = ctypes.windll.user32
+    try:
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+        time.sleep(0.2)
+        user32.BringWindowToTop(hwnd)
+        time.sleep(0.1)
+        # A pressed/released Alt key momentarily relaxes Windows' foreground
+        # activation restrictions for the calling thread. Releasing it in a
+        # finally keeps a stuck Alt from corrupting later keystrokes.
+        try:
+            pyautogui.keyDown('alt')
+            time.sleep(0.05)
+        finally:
+            pyautogui.keyUp('alt')
+        time.sleep(0.1)
+        user32.SetForegroundWindow(hwnd)
+        time.sleep(0.4)
+        if user32.GetForegroundWindow() == hwnd:
+            return True
+        # Second attempt: bounce through topmost, then retry once more.
+        user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002)  # HWND_TOPMOST
+        user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, 0x0001 | 0x0002)  # HWND_NOTOPMOST
+        time.sleep(0.2)
+        user32.SetForegroundWindow(hwnd)
+        time.sleep(0.4)
+        return user32.GetForegroundWindow() == hwnd
+    except Exception as error:
+        print(f"  ! activate_window error: {error}")
+        return False
+
+
+def get_window_rect(hwnd):
+    """Return (left, top, right, bottom) of a window, or None if unavailable."""
+    import ctypes.wintypes as wintypes
+    rect = wintypes.RECT()
+    if not ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+        return None
+    return rect.left, rect.top, rect.right, rect.bottom
 
 
 def check_crash_logs(lima_install_path):
