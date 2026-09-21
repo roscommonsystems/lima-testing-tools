@@ -20,7 +20,10 @@ from lima_test_utils import (
 # stays robust to base-LLM changes: new models are covered automatically and retired
 # ones simply aren't tested (no false failures when e.g. Opus 4.8 is replaced by 5.x).
 
-MODEL_COMBO_NAME = "Base AI Model Selection Dropdown"
+# The accessible name matches settings_dialog.py's setAccessibleName exactly
+# ("AI Model Selection Dropdown", not "Base AI Model ...") — the combo is found
+# by UIA Name, so the discovery depends on the exact app-side accessible name.
+MODEL_COMBO_NAME = "AI Model Selection Dropdown"
 SAVE_BUTTON_NAME = "Save Settings Button"
 
 
