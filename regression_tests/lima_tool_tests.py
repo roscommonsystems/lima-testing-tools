@@ -49,7 +49,7 @@ def run_all_tool_tests(executor):
                 "Look for a dialog box with About information (version, copyright, etc.) "
                 "that was not present in the BEFORE screenshot."
             ),
-            "menu_nav_keys": ["down", "down", "enter"],
+            "menu_nav_keys": ["down", "down", "down", "enter"],
             "dialog_title_keywords": ["About LIMA", "About"],
         },
         {
