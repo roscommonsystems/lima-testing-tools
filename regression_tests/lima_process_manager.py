@@ -77,7 +77,7 @@ class LimaProcessManager:
             print(f"  Terminated stale LIMA instance(s): {killed}")
             time.sleep(SLEEP_A)
 
-    def launch(self, exe_path, install_path, window_timeout=30):
+    def launch(self, exe_path, install_path, window_timeout=70):
         """
         Launch LIMA and wait for the process, a window, and its chat box to appear.
 
@@ -86,7 +86,10 @@ class LimaProcessManager:
         LIMA window is on screen AND its chat box (text input) is reachable via
         UI Automation. A launch that finds only a process — or a window without a
         ready chat box — is reported as failed instead of letting the caller
-        later fail with a misleading "could not refocus".
+        later fail with a misleading "could not refocus". The total wait is
+        SLEEP_D (process startup) + window_timeout (~90s by default) because
+        LIMA 1.9.0.9 startup is slower; it still returns as soon as the chat box
+        is ready.
 
         Returns:
             bool: True on success (process running with a window whose chat box
