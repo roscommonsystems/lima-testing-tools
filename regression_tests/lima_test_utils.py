@@ -27,6 +27,7 @@ from lima_auth import LimaAuth
 # Test result constants
 TEST_PASSED = "PASSED"
 TEST_FAILED = "FAILED"
+TEST_SKIPPED = "SKIPPED"
 
 # Sleep tier constants
 SLEEP_A = 1   # Single UI action (key press, click, focus)

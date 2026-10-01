@@ -12,7 +12,7 @@ import pygetwindow as gw
 import psutil
 from datetime import datetime
 
-from lima_test_utils import TEST_PASSED, TEST_FAILED
+from lima_test_utils import TEST_PASSED, TEST_FAILED, TEST_SKIPPED
 
 
 class LimaTestReporter:
@@ -102,6 +102,7 @@ class LimaTestReporter:
         # Calculate the number of tests that passed and failed
         tests_passed_count = sum(1 for test in self.test_results["tests"] if test["status"] == TEST_PASSED)
         tests_failed_count = sum(1 for test in self.test_results["tests"] if test["status"] == TEST_FAILED)
+        tests_skipped_count = sum(1 for test in self.test_results["tests"] if test["status"] == TEST_SKIPPED)
         total_tests_count = len(self.test_results['tests'])
         
         print("\n" + "="*60)
@@ -112,11 +113,17 @@ class LimaTestReporter:
         print(f"\nTests Run: {total_tests_count}")
         print(f"Tests Passed: {tests_passed_count}")
         print(f"Tests Failed: {tests_failed_count}")
+        print(f"Tests Skipped: {tests_skipped_count}")
         
         for test in self.test_results["tests"]:
-            status_symbol = "OK" if test["status"] == TEST_PASSED else "X"
+            if test["status"] == TEST_PASSED:
+                status_symbol = "OK"
+            elif test["status"] == TEST_SKIPPED:
+                status_symbol = "-"
+            else:
+                status_symbol = "X"
             print(f"  [{status_symbol}] {test['name']}: {test['status']}")
-            if test["status"] == TEST_FAILED:
+            if test["status"] in (TEST_FAILED, TEST_SKIPPED):
                 print(f"      Message: {test['message']}")
         
         if self.test_results["crash_logs"]["detected"]:

@@ -11,7 +11,7 @@ import uiautomation as uia
 
 from lima_test_utils import (
     take_screenshot, verify_tool_with_screenshots, minimize_all_other_windows,
-    type_into_lima, speak_tts, TEST_PASSED, TEST_FAILED,
+    type_into_lima, speak_tts, TEST_PASSED, TEST_FAILED, TEST_SKIPPED,
     SLEEP_A, SLEEP_B, SLEEP_C,
 )
 
@@ -25,6 +25,11 @@ from lima_test_utils import (
 # by UIA Name, so the discovery depends on the exact app-side accessible name.
 MODEL_COMBO_NAME = "AI Model Selection Dropdown"
 SAVE_BUTTON_NAME = "Save Settings Button"
+
+# Returned by _select_model when the requested model exists in the dropdown but is
+# disabled (locked behind a Pro/Standard plan): the caller reports it as a skip
+# instead of treating the unchanged combo value as a failure.
+DISABLED_MODEL = "__MODEL_DISABLED__"
 
 
 def _find_settings_window(maxdepth=6):
@@ -185,9 +190,11 @@ def _discover_available_models(executor):
 def _select_model(settings_win, key):
     """Select the model whose label contains ``key`` from the Base AI Model combo.
 
-    Uses the UIA SelectionItem pattern (falling back to a raw Click) and VERIFIES
-    the combo value actually changed, retrying up to 3 times — a plain click can
-    silently miss and leave the previously-selected model in place.
+    Uses a REAL mouse click on the dropdown item (a UIA SelectionItem.Select() can
+    silently no-op on this app's combo, whereas an actual click exercises the real
+    user path). The combo value is VERIFIED to have actually changed, retrying up
+    to 3 times. If the requested item exists but is disabled (locked behind a
+    Pro/Standard plan, so it can never be selected), returns DISABLED_MODEL.
     """
     combo = settings_win.ComboBoxControl(Name=MODEL_COMBO_NAME)
     if not combo.Exists(2):
@@ -220,11 +227,27 @@ def _select_model(settings_win, key):
                     print(err)
 
         if target is not None:
+            # A disabled model (needs Pro/Standard plan) can never be selected, so
+            # report it as such instead of burning the retries on a lost cause.
             try:
-                target.GetSelectionItemPattern().Select()
+                if not target.IsEnabled:
+                    _close_combo(combo)
+                    return DISABLED_MODEL
             except Exception as err:
                 print(err)
-                target.Click()
+            # Make sure the item is on-screen so the real click lands on it.
+            try:
+                target.GetScrollItemPattern().ScrollIntoView()
+            except Exception:
+                pass
+            try:
+                target.Click()  # real click - the user-visible selection path
+            except Exception as err:
+                print(err)
+                try:
+                    target.GetSelectionItemPattern().Select()
+                except Exception as err2:
+                    print(err2)
             time.sleep(SLEEP_B)
 
         try:
@@ -236,13 +259,19 @@ def _select_model(settings_win, key):
             return value
 
         # Selection didn't take — close the dropdown and retry.
-        try:
-            combo.GetExpandCollapsePattern().Collapse()
-        except Exception:
-            pyautogui.press('escape')
+        _close_combo(combo)
         time.sleep(SLEEP_A)
 
     return value
+
+
+def _close_combo(combo):
+    """Collapse the Base AI Model dropdown, falling back to Escape if the
+    ExpandCollapse pattern is not available."""
+    try:
+        combo.GetExpandCollapsePattern().Collapse()
+    except Exception:
+        pyautogui.press('escape')
 
 
 def run_all_model_tests(executor):
@@ -313,6 +342,15 @@ def run_all_model_tests(executor):
 
             print(f"  Selecting model '{key}'...")
             value = _select_model(settings_win, key)
+            if value == DISABLED_MODEL:
+                # The model is listed in the dropdown but locked behind a paid plan,
+                # so it can never be selected - report it as a skip, not a failure.
+                executor.add_test_result(
+                    result_name, TEST_SKIPPED,
+                    f"Model '{key}' is disabled - needs Pro/Standard plan")
+                print(f"  - {key} disabled (needs Pro/Standard plan)")
+                pyautogui.press('escape'); time.sleep(SLEEP_A)
+                continue
             if not value or key not in value:
                 executor.add_test_result(result_name, TEST_FAILED,
                                          f"Could not select model '{key}' (combo reads {value!r})")
