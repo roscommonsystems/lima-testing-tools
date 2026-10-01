@@ -31,6 +31,18 @@ SAVE_BUTTON_NAME = "Save Settings Button"
 # instead of treating the unchanged combo value as a failure.
 DISABLED_MODEL = "__MODEL_DISABLED__"
 
+# The app marks plan-gated models right in the dropdown label (e.g. "Pro plan only",
+# "Standard plan or higher"), which is the reliable signal that the model cannot be
+# selected on the current license. Checked in addition to UIA IsEnabled (which this
+# Qt build reports as True even for gated items).
+PLAN_MARKERS = ("pro plan", "standard plan")
+
+
+def _is_plan_gated(name):
+    """True if the dropdown label marks the model as locked behind a paid plan."""
+    low = (name or "").lower()
+    return any(marker in low for marker in PLAN_MARKERS)
+
 
 def _find_settings_window(maxdepth=6):
     """Find LIMA's Settings dialog anywhere in the tree (it is nested, not top-level)."""
@@ -230,7 +242,7 @@ def _select_model(settings_win, key):
             # A disabled model (needs Pro/Standard plan) can never be selected, so
             # report it as such instead of burning the retries on a lost cause.
             try:
-                if not target.IsEnabled:
+                if not target.IsEnabled or _is_plan_gated(target.Name):
                     _close_combo(combo)
                     return DISABLED_MODEL
             except Exception as err:
