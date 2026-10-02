@@ -77,21 +77,27 @@ class LimaProcessManager:
             print(f"  Terminated stale LIMA instance(s): {killed}")
             time.sleep(SLEEP_A)
 
-    def launch(self, exe_path, install_path, window_timeout=30):
+    def launch(self, exe_path, install_path, window_timeout=70):
         """
-        Launch LIMA and wait for both the process and a window to appear.
+        Launch LIMA and wait for the process, a window, and its chat box to appear.
 
         Kills pre-existing same-name instances first (see
         _terminate_stale_instances), then starts the executable and polls until a
-        LIMA window is on screen. A launch that finds only a process — but no
-        window — is reported as failed instead of letting the caller later fail
-        with a misleading "could not refocus".
+        LIMA window is on screen AND its chat box (text input) is reachable via
+        UI Automation. A launch that finds only a process — or a window without a
+        ready chat box — is reported as failed instead of letting the caller
+        later fail with a misleading "could not refocus". The total wait is
+        SLEEP_D (process startup) + window_timeout (~90s by default) because
+        LIMA 1.9.0.9 startup is slower; it still returns as soon as the chat box
+        is ready.
 
         Returns:
-            bool: True on success (process running with a window on screen).
+            bool: True on success (process running with a window whose chat box
+            is on screen and ready).
         """
         from lima_test_utils import (find_process_by_name, find_windows_by_title,
                                      SLEEP_A, SLEEP_D)
+        import uiautomation as uia
         self._terminate_stale_instances(exe_path)
         original_dir = os.getcwd()
         os.chdir(install_path)
@@ -111,14 +117,40 @@ class LimaProcessManager:
                     candidates = find_windows_by_title("LIMA", pid=self.pid)
                     if not candidates:
                         candidates = find_windows_by_title("LIMA")
-                    if candidates:
-                        print(f"  OK LIMA window on screen: {candidates[0][1]!r}")
+                    if candidates and self._chat_box_is_ready(uia):
+                        print(f"  OK LIMA chat box ready: {candidates[0][1]!r}")
                         return True
                 time.sleep(SLEEP_A)
-            print("  ! LIMA process and window did not appear in time")
+            print("  ! LIMA process, window, and chat box did not appear in time")
             return False
         finally:
             os.chdir(original_dir)
+
+    def _chat_box_is_ready(self, uia):
+        """Return True when the LIMA window exposes its chat box (Edit control).
+
+        Mirrors the UIA detection in _focus_lima_text_input and
+        lima_test_utils.verify_text_in_lima_input: find the LIMA window via UIA,
+        then look for an Edit control directly or among its children. Any UIA
+        error is treated as "not ready yet" so the caller simply keeps polling.
+        """
+        try:
+            lima_window = None
+            for ctrl in uia.GetRootControl().GetChildren():
+                if ctrl.Name and "LIMA" in ctrl.Name:
+                    lima_window = ctrl
+                    break
+            if lima_window is None:
+                return False
+            edit = lima_window.EditControl()
+            if edit and edit.Exists():
+                return True
+            for child in lima_window.GetChildren():
+                if child.ControlTypeName in ("Edit", "EditControl"):
+                    return True
+        except Exception:
+            pass
+        return False
 
     def refocus(self, timeout=10):
         """
