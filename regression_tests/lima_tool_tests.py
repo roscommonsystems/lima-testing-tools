@@ -7,67 +7,13 @@ import time
 import webbrowser
 import pygetwindow as gw
 import pyautogui
-import uiautomation as uia
 
 from lima_test_utils import (
     take_screenshot, verify_tool_with_screenshots, overlay_cursor_on_screenshot,
-    find_window_by_title, measure_peak_audio, TEST_PASSED, TEST_FAILED,
-    speak_tts, type_into_lima,
+    find_window_by_title, measure_peak_audio, open_file_menu_item,
+    TEST_PASSED, TEST_FAILED, speak_tts, type_into_lima,
     SLEEP_A, SLEEP_B, SLEEP_C, SLEEP_D
 )
-
-
-def _open_dialog_item_via_uia(menu_item_name):
-    """Find the open File menu's target item by UIA name and click it.
-
-    Anchors on LIMA's open QMenu (File menu) and matches the item's accessible
-    name case-insensitively, so it is robust to menu reordering, keystroke
-    races, and focus hiccups that can swallow a hardcoded key sequence.
-
-    Returns True if the item was found and clicked, False otherwise.
-    """
-    root = uia.GetRootControl()
-    stack = [(c, 0) for c in root.GetChildren()]
-    while stack:
-        ctrl, depth = stack.pop()
-        try:
-            if ctrl.ClassName == "QMenu" and ctrl.ControlTypeName == "MenuControl":
-                for kid in ctrl.GetChildren():
-                    if kid.ControlTypeName == "MenuItemControl" and \
-                            (kid.Name or "").strip().lower() == menu_item_name.lower():
-                        print(f"  UIA: clicking menu item '{kid.Name}'...")
-                        kid.Click()
-                        return True
-                return False
-            if depth < 8:
-                stack.extend((c, depth + 1) for c in ctrl.GetChildren())
-        except Exception:
-            pass
-    return False
-
-
-def _open_file_menu_item(menu_item_name, menu_nav_keys):
-    """Open LIMA's File menu and activate the target item.
-
-    Preferred path: UIA-by-name click (robust to menu reordering and keystroke
-    timing). Fallback: the legacy hardcoded key sequence, used when the menu
-    item has no UIA name or the UIA tree is unavailable.
-    """
-    pyautogui.press('alt')
-    time.sleep(SLEEP_A)
-    pyautogui.press('enter')
-    time.sleep(SLEEP_B)
-
-    activated = False
-    if menu_item_name:
-        activated = _open_dialog_item_via_uia(menu_item_name)
-        if not activated:
-            print(f"  ! UIA could not find '{menu_item_name}'; falling back to nav keys")
-    if not activated:
-        for key in menu_nav_keys:
-            pyautogui.press(key)
-            time.sleep(SLEEP_A)
-    time.sleep(SLEEP_C)
 
 
 def run_all_tool_tests(executor):
@@ -296,7 +242,7 @@ def run_all_tool_tests(executor):
                 # UIA-by-name is attempted first (robust to menu reordering and
                 # keystroke races); the legacy key sequence is the fallback.
                 print(f"  Opening {test_name} via File menu...")
-                _open_file_menu_item(test.get("menu_item_name"), test["menu_nav_keys"])
+                open_file_menu_item(test.get("menu_item_name"), test["menu_nav_keys"])
             else:
                 # Audio kind: type command into LIMA, submit, then measure per-session audio peak.
                 # measure_peak_audio's own duration IS the wait — no 30s AI loop needed.
@@ -353,7 +299,7 @@ def run_all_tool_tests(executor):
                         time.sleep(SLEEP_A)
                         executor.process_manager.refocus(timeout=10)
                         time.sleep(SLEEP_A)
-                        _open_file_menu_item(test.get("menu_item_name"), test["menu_nav_keys"])
+                        open_file_menu_item(test.get("menu_item_name"), test["menu_nav_keys"])
 
             # Step 11: Verification using OpenRouter Gemini
             verification_result = None
