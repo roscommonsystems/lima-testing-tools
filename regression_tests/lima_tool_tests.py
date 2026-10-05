@@ -16,8 +16,13 @@ from lima_test_utils import (
 )
 
 
-def run_all_tool_tests(executor):
-    """Run all LIMA AI tool tests, relaunching LIMA fresh before each test."""
+def run_all_tool_tests(executor, kinds=None):
+    """Run all LIMA AI tool tests, relaunching LIMA fresh before each test.
+
+    Args:
+        executor: LimaTestExecutor instance driving the run.
+        kinds: optional list of test kinds to run (e.g. ["dialog"]); None runs all.
+    """
     print("\n" + "=" * 60)
     print("TESTING ALL LIMA AI TOOLS")
     print("=" * 60)
@@ -101,6 +106,10 @@ def run_all_tool_tests(executor):
         {"kind": "command", "name": "MAXIMIZE WINDOW", "command": "maximize window", "result_name": "AI Tool Test: Maximize Window", "verification_type": "window_state", "verification_prompt": "Did the active window maximize to fill the screen?"},
         {"kind": "command", "name": "OPEN WEBSITE", "command": "open google.com", "result_name": "AI Tool Test: Open Website", "verification_type": "browser_window", "verification_prompt": "Did a web browser window open showing Google or a website?"},
     ]
+
+    if kinds:
+        tool_tests = [t for t in tool_tests if t.get("kind") in kinds]
+        print(f"  Filtering to {len(tool_tests)} test(s) of kind(s): {kinds}")
 
     total = len(tool_tests)
     for i, test in enumerate(tool_tests, start=1):
