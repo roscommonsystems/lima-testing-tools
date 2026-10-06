@@ -675,6 +675,59 @@ def find_window_by_title(title_substring, timeout=10):
     return None
 
 
+def open_file_menu_item(menu_item_name, menu_nav_keys):
+    """Open LIMA's File menu and activate the target item.
+
+    Preferred path: UIA-by-name click (robust to menu reordering and keystroke
+    timing). Fallback: the legacy hardcoded key sequence, used when the menu
+    item has no UIA name or the UIA tree is unavailable.
+    """
+    pyautogui.press('alt')
+    time.sleep(SLEEP_A)
+    pyautogui.press('enter')
+    time.sleep(SLEEP_B)
+
+    activated = False
+    if menu_item_name:
+        activated = _open_dialog_item_via_uia(menu_item_name)
+        if not activated:
+            print(f"  ! UIA could not find '{menu_item_name}'; falling back to nav keys")
+    if not activated:
+        for key in menu_nav_keys:
+            pyautogui.press(key)
+            time.sleep(SLEEP_A)
+    time.sleep(SLEEP_C)
+
+
+def _open_dialog_item_via_uia(menu_item_name):
+    """Find the open File menu's target item by UIA name and click it.
+
+    Anchors on LIMA's open QMenu (File menu) and matches the item's accessible
+    name case-insensitively, so it is robust to menu reordering, keystroke
+    races, and focus hiccups that can swallow a hardcoded key sequence.
+
+    Returns True if the item was found and clicked, False otherwise.
+    """
+    root = uia.GetRootControl()
+    stack = [(c, 0) for c in root.GetChildren()]
+    while stack:
+        ctrl, depth = stack.pop()
+        try:
+            if ctrl.ClassName == "QMenu" and ctrl.ControlTypeName == "MenuControl":
+                for kid in ctrl.GetChildren():
+                    if kid.ControlTypeName == "MenuItemControl" and \
+                            (kid.Name or "").strip().lower() == menu_item_name.lower():
+                        print(f"  UIA: clicking menu item '{kid.Name}'...")
+                        kid.Click()
+                        return True
+                return False
+            if depth < 8:
+                stack.extend((c, depth + 1) for c in ctrl.GetChildren())
+        except Exception:
+            pass
+    return False
+
+
 def minimize_all_other_windows():
     """
     Minimize all windows except the current process to ensure clean test environment.

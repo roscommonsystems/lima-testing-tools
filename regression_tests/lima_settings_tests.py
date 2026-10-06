@@ -82,7 +82,7 @@ import pyautogui
 import pygetwindow as gw
 
 from lima_test_utils import (
-    find_window_by_title, speak_tts, TEST_PASSED, TEST_FAILED,
+    find_window_by_title, open_file_menu_item, speak_tts, TEST_PASSED, TEST_FAILED,
     SLEEP_A, SLEEP_B, SLEEP_C,
 )
 
@@ -210,16 +210,24 @@ def run_settings_hotkey_reconfigure_test(executor):
             print(f"  X {message}")
             return
 
-        # Open File -> Settings (first menu item), same route as the dialog tests
+        # Open File -> Settings via UIA-by-name (legacy key sequence as fallback),
+        # same route/approach as the About dialog test. Retry up to 3 independent
+        # open attempts, re-focusing LIMA between tries.
         print("  Opening Settings via File menu...")
-        pyautogui.press('alt')
-        time.sleep(SLEEP_A)
-        pyautogui.press('enter')
-        time.sleep(SLEEP_B)
-        pyautogui.press('enter')
-        time.sleep(SLEEP_C)
+        settings_open = False
+        for open_attempt in range(1, 4):
+            open_file_menu_item("Settings", ["enter"])
+            if find_window_by_title(SETTINGS_WINDOW_TITLE, timeout=10) is not None:
+                settings_open = True
+                break
+            if open_attempt < 3:
+                print(f"  ! Settings dialog not open, retrying ({open_attempt + 1}/3)...")
+                pyautogui.press('escape')
+                time.sleep(SLEEP_A)
+                executor.process_manager.refocus(timeout=10)
+                time.sleep(SLEEP_A)
 
-        if find_window_by_title(SETTINGS_WINDOW_TITLE, timeout=10) is None:
+        if not settings_open:
             message = "Settings dialog did not open - File menu navigation failed"
             executor.add_test_result(RESULT_NAME, TEST_FAILED, message)
             print(f"  X {message}")

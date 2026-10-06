@@ -11,7 +11,7 @@ import uiautomation as uia
 
 from lima_test_utils import (
     take_screenshot, verify_tool_with_screenshots, minimize_all_other_windows,
-    type_into_lima, speak_tts, TEST_PASSED, TEST_FAILED,
+    type_into_lima, speak_tts, open_file_menu_item, TEST_PASSED, TEST_FAILED,
     SLEEP_A, SLEEP_B, SLEEP_C,
 )
 
@@ -51,11 +51,12 @@ def _open_settings(executor):
     """Open LIMA's Settings dialog; return the UIA control or None.
 
     Minimizes other windows first so the Alt menu keystroke lands on LIMA, then
-    File menu via Alt -> Enter -> Enter (Settings is the first item). A swallowed
-    keystroke (menu not focused, focus moved between calls, timing, etc.) would
-    otherwise leave the dialog unopened, so the sequence is retried a few times,
-    polling UIA after each attempt — the dialog can lag a moment settling into
-    the UI Automation tree.
+    opens the Settings File-menu item by UIA accessible name (legacy
+    Alt -> Enter -> Enter key sequence as a fallback) — the same UIA-by-name
+    approach as the About dialog test. A swallowed keystroke (menu not focused,
+    focus moved between calls, timing, etc.) would otherwise leave the dialog
+    unopened, so the open is retried a few times, polling UIA after each attempt
+    — the dialog can lag a moment settling into the UI Automation tree.
     """
     for attempt in range(1, 4):
         minimize_all_other_windows()
@@ -63,9 +64,7 @@ def _open_settings(executor):
         executor.process_manager.refocus(timeout=10)
         time.sleep(SLEEP_B)
         pyautogui.press('escape'); time.sleep(SLEEP_A)
-        pyautogui.press('alt'); time.sleep(SLEEP_B)
-        pyautogui.press('enter'); time.sleep(SLEEP_B)
-        pyautogui.press('enter'); time.sleep(SLEEP_C)
+        open_file_menu_item("Settings", ["enter"])
 
         deadline = time.time() + 10
         while time.time() < deadline:
