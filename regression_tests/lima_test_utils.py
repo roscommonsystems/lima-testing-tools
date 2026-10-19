@@ -137,12 +137,62 @@ def speak_tts(text):
     threading.Thread(target=_run, daemon=True).start()
 
 
+def find_lima_uia_window():
+    """
+    Return LIMA's top-level UIA window, or None.
+
+    Only Qt-class windows match, so an editor or terminal whose title merely
+    mentions "LIMA" (e.g. a VS Code window) is not mistaken for the app.
+    """
+    for window in uia.GetRootControl().GetChildren():
+        if window.Name and "LIMA" in window.Name and (window.ClassName or "").startswith("Qt"):
+            return window
+    return None
+
+
+def find_lima_message_input(lima_window):
+    """
+    Return LIMA's message input box, or None.
+
+    The conversation pane is a read-only text widget that UIA also reports as
+    an Edit control, and since LIMA 2.0.0.0 it precedes the message box in the
+    tree — so taking the first Edit lands on the conversation. Instead pick the
+    writable Edit, preferring the bottom-most one (the input sits below the
+    conversation); read-only Edits are used only if nothing writable is found.
+    """
+    def is_read_only(control):
+        try:
+            return bool(control.GetValuePattern().IsReadOnly)
+        except Exception:
+            return False
+
+    edits = [control for control, _depth in uia.WalkControl(lima_window)
+             if control.ControlTypeName == "EditControl" and control.IsEnabled]
+    if not edits:
+        return None
+    return max(edits, key=lambda c: (not is_read_only(c), c.BoundingRectangle.top))
+
+
 def type_into_lima(text, max_tabs=10):
     """
-    Type text into LIMA's text input. Uses UI automation to check which
-    element currently has focus — if it is not a text input (Edit control),
-    presses Tab and re-checks until it finds one, up to max_tabs times.
+    Type text into LIMA's message input. Locates the input directly via UI
+    automation (see find_lima_message_input). If that fails, falls back to
+    pressing Tab until a text input has focus, up to max_tabs times, and
+    typing with pyautogui.
     """
+    try:
+        lima_window = find_lima_uia_window()
+        message_input = find_lima_message_input(lima_window) if lima_window else None
+        if message_input:
+            message_input.SetFocus()
+            message_input.Click()
+            time.sleep(0.2)
+            message_input.SendKeys(text)
+            print(f"  OK Typed text into LIMA message input using uiautomation")
+            return
+        print(f"  ! Could not find LIMA message input via uiautomation, falling back to tabbing")
+    except Exception as e:
+        print(f"  ! uiautomation lookup failed, falling back to tabbing: {e}")
 
     def get_focused_element():
         """
@@ -167,6 +217,13 @@ def type_into_lima(text, max_tabs=10):
             return False
 
         try:
+            # The conversation pane is a read-only Edit; never treat it as the input
+            try:
+                if element.GetValuePattern().IsReadOnly:
+                    return False
+            except Exception:
+                pass
+
             # Method 1: Check ControlTypeName in uiautomation
             control_type_name = element.ControlTypeName
             if control_type_name:
@@ -216,48 +273,8 @@ def type_into_lima(text, max_tabs=10):
         pyautogui.press('tab')
         time.sleep(0.3)
 
-    # Type into whichever Edit control now has focus using uiautomation
-    try:
-        # Find the LIMA window and its Edit control
-        lima_windows = uia.GetRootControl().GetChildren()
-        lima_window = None
-        for window in lima_windows:
-            if window.Name and "LIMA" in window.Name:
-                lima_window = window
-                break
-
-        if lima_window is None:
-            # Fallback: Use pyautogui if uiautomation cannot find LIMA window
-            print(f"  ! Could not find LIMA window with uiautomation, falling back to pyautogui.write")
-            pyautogui.write(text, interval=0.15)
-            return
-
-        # Find the Edit control within the LIMA window
-        edit_control = lima_window.EditControl()
-        if edit_control and edit_control.Exists():
-            edit_control.SetFocus()
-            edit_control.Click()
-            time.sleep(0.2)
-            edit_control.SendKeys(text)
-            print(f"  OK Typed text using uiautomation")
-        else:
-            # Fallback: Search recursively for Edit controls
-            edit_controls = lima_window.GetChildren()
-            for child in edit_controls:
-                if child.ControlTypeName == "Edit" or child.ControlTypeName == "EditControl":
-                    child.SetFocus()
-                    child.Click()
-                    time.sleep(0.2)
-                    child.SendKeys(text)
-                    print(f"  OK Typed text using uiautomation (recursive search)")
-                    break
-            else:
-                # No Edit control found, fallback to pyautogui
-                print(f"  ! Could not find Edit control, falling back to pyautogui.write")
-                pyautogui.write(text, interval=0.15)
-    except Exception as e:
-        print(f"  ! Could not use uiautomation to type, falling back to pyautogui.write: {e}")
-        pyautogui.write(text, interval=0.15)
+    # Type into whichever control now has focus
+    pyautogui.write(text, interval=0.15)
 
 
 def verify_text_in_lima_input(expected_text):
@@ -266,41 +283,12 @@ def verify_text_in_lima_input(expected_text):
     Returns True if found, False if not (or if uiautomation can't reach the control).
     """
     try:
-        # Find the LIMA window using uiautomation
-        lima_window = None
-        for window in uia.GetRootControl().GetChildren():
-            if window.Name and "LIMA" in window.Name:
-                lima_window = window
-                break
-
+        lima_window = find_lima_uia_window()
         if lima_window is None:
             print(f"  ! Could not find LIMA window to verify text")
             return False
 
-        # Try multiple methods to find the Edit control
-        edit_control = None
-
-        # Method 1: Try direct EditControl access
-        try:
-            edit_control = lima_window.EditControl()
-            if edit_control and edit_control.Exists():
-                pass  # Successfully found
-            else:
-                edit_control = None
-        except Exception:
-            pass
-
-        # Method 2: Search recursively for Edit controls
-        if edit_control is None:
-            try:
-                all_controls = lima_window.GetChildren()
-                for ctrl in all_controls:
-                    if ctrl.ControlTypeName in ["Edit", "EditControl"]:
-                        edit_control = ctrl
-                        break
-            except Exception:
-                pass
-
+        edit_control = find_lima_message_input(lima_window)
         if edit_control is None:
             print(f"  ! Could not find LIMA Edit control to verify text")
             return False

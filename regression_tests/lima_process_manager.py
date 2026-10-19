@@ -127,27 +127,19 @@ class LimaProcessManager:
             os.chdir(original_dir)
 
     def _chat_box_is_ready(self, uia):
-        """Return True when the LIMA window exposes its chat box (Edit control).
+        """Return True when the LIMA window exposes its chat box (message input).
 
         Mirrors the UIA detection in _focus_lima_text_input and
         lima_test_utils.verify_text_in_lima_input: find the LIMA window via UIA,
-        then look for an Edit control directly or among its children. Any UIA
-        error is treated as "not ready yet" so the caller simply keeps polling.
+        then look for its writable message input. Any UIA error is treated as
+        "not ready yet" so the caller simply keeps polling.
         """
+        from lima_test_utils import find_lima_uia_window, find_lima_message_input
         try:
-            lima_window = None
-            for ctrl in uia.GetRootControl().GetChildren():
-                if ctrl.Name and "LIMA" in ctrl.Name:
-                    lima_window = ctrl
-                    break
+            lima_window = find_lima_uia_window()
             if lima_window is None:
                 return False
-            edit = lima_window.EditControl()
-            if edit and edit.Exists():
-                return True
-            for child in lima_window.GetChildren():
-                if child.ControlTypeName in ("Edit", "EditControl"):
-                    return True
+            return find_lima_message_input(lima_window) is not None
         except Exception:
             pass
         return False
@@ -212,14 +204,15 @@ class LimaProcessManager:
             # can still be focused; some tool windows only settle into the UIA
             # tree after the Win32 EnumWindows snapshot.
             try:
-                for ctrl in uia.GetRootControl().GetChildren():
-                    if ctrl.Name and "LIMA" in ctrl.Name:
-                        try:
-                            ctrl.SetFocus()
-                        except Exception:
-                            pass
-                        print(f"  OK LIMA refocused via UIA: {ctrl.Name!r}")
-                        return True
+                from lima_test_utils import find_lima_uia_window
+                ctrl = find_lima_uia_window()
+                if ctrl is not None:
+                    try:
+                        ctrl.SetFocus()
+                    except Exception:
+                        pass
+                    print(f"  OK LIMA refocused via UIA: {ctrl.Name!r}")
+                    return True
             except Exception:
                 pass
 
@@ -229,17 +222,14 @@ class LimaProcessManager:
         return False
 
     def _focus_lima_text_input(self, uia):
-        """Focus and click LIMA's text input via UI Automation."""
-        lima_window = None
-        for ctrl in uia.GetRootControl().GetChildren():
-            if ctrl.Name and "LIMA" in ctrl.Name:
-                lima_window = ctrl
-                break
+        """Focus and click LIMA's message input via UI Automation."""
+        from lima_test_utils import find_lima_uia_window, find_lima_message_input
+        lima_window = find_lima_uia_window()
         if lima_window is None:
             raise Exception("LIMA window not found via UIA")
-        edit = lima_window.EditControl()
-        if not (edit and edit.Exists()):
-            raise Exception("Edit control not found via UIA")
+        edit = find_lima_message_input(lima_window)
+        if edit is None:
+            raise Exception("Message input not found via UIA")
         edit.SetFocus()
         edit.Click()
         time.sleep(SLEEP_A)
