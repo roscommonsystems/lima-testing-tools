@@ -20,6 +20,10 @@ from lima_test_utils import enum_top_level_windows, get_window_title, get_window
 # Tagalog). The Yes button ends in "(Y)" in every language.
 APPROVAL_TITLES = ("Approve this action?", "Chấp nhận hành động này?", "Aprubahan ang aksyong ito?")
 
+# The background thread and type_into_lima (main thread) both approve popups. Taking turns
+# stops both acting on the same popup, where the loser would find it already closed.
+_approve_lock = threading.Lock()
+
 
 def find_action_prompts():
     """Return the window handles of every visible LIMA approval popup."""
@@ -43,19 +47,24 @@ def approve_action_prompts():
         list: The description of each action approved.
     """
     approved = []
-    for hwnd in find_action_prompts():
-        description = ""
-        try:
-            prompt = uia.ControlFromHandle(hwnd)
-            labels = [c.Name for c in prompt.GetChildren() if c.ControlTypeName == "TextControl" and c.Name]
-            description = labels[-1] if labels else ""
-            yes_button = prompt.ButtonControl(searchDepth=3, SubName="(Y)")
-            yes_button.GetInvokePattern().Invoke()
-        except Exception as error:
-            print(f"  ! Could not press Yes on LIMA's approval popup ({error}), pressing Y instead")
-            pyautogui.press('y')
-        print(f"  OK Auto-approved LIMA action: {description!r}")
-        approved.append(description)
+    with _approve_lock:
+        for hwnd in find_action_prompts():
+            description = ""
+            try:
+                prompt = uia.ControlFromHandle(hwnd)
+                labels = [c.Name for c in prompt.GetChildren() if c.ControlTypeName == "TextControl" and c.Name]
+                description = labels[-1] if labels else ""
+                yes_button = prompt.ButtonControl(searchDepth=3, SubName="(Y)")
+                yes_button.GetInvokePattern().Invoke()
+            except Exception as error:
+                # Invoke also fails when the popup closed in the meantime. LIMA stops listening
+                # for Y then, so a Y pressed now would be typed into whatever has focus.
+                if not ctypes.windll.user32.IsWindowVisible(hwnd):
+                    continue
+                print(f"  ! Could not press Yes on LIMA's approval popup ({error}), pressing Y instead")
+                pyautogui.press('y')
+            print(f"  OK Auto-approved LIMA action: {description!r}")
+            approved.append(description)
     return approved
 
 
