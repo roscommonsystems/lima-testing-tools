@@ -196,6 +196,11 @@ def type_into_lima(text, max_tabs=10):
     pressing Tab until a text input has focus, up to max_tabs times, and
     typing with pyautogui.
     """
+    # While LIMA's approval popup is open it captures every Y and N typed anywhere, so an
+    # "n" in the text would deny the pending action. Approve it before typing.
+    from lima_action_approver import approve_action_prompts
+    approve_action_prompts()
+
     try:
         lima_window = find_lima_uia_window()
         message_input = find_lima_message_input(lima_window) if lima_window else None

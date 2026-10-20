@@ -16,15 +16,17 @@ from lima_tool_tests import run_all_tool_tests
 from lima_voice_tests import run_all_voice_tests
 from lima_settings_tests import run_settings_hotkey_reconfigure_test
 from lima_model_tests import run_all_model_tests
+from lima_action_approver import ActionApprover
 
 
 class LimaTestExecutor:
     """Handles execution of LIMA regression tests."""
-    
+
     def __init__(self):
         """Initialize the test executor with reporter and process manager."""
         self.reporter = LimaTestReporter()
         self.process_manager = LimaProcessManager()
+        self.action_approver = ActionApprover()
     
     # ========================================
     # Property Delegates to Reporter
@@ -67,6 +69,9 @@ class LimaTestExecutor:
         Returns:
             bool: True if all tests passed, False otherwise
         """
+        # LIMA 2.0 asks "Approve this action?" before screen-changing actions, at
+        # unpredictable times; approve every one so the run needs no human input.
+        self.action_approver.start()
         try:
             # Minimize all other windows first for clean environment
             minimize_all_other_windows()
@@ -166,6 +171,8 @@ class LimaTestExecutor:
             self.add_test_result("Test Execution", TEST_FAILED, error_msg)
             self.add_error(error_msg)
             self._msgbox("LIMA Tests Crashed", f"Unexpected error:\n\n{error}", error=True)
+        finally:
+            self.action_approver.stop()
 
         self.reporter.finalize_results()
         passed = self.reporter.get_overall_status() == TEST_PASSED
