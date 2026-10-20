@@ -137,17 +137,33 @@ def speak_tts(text):
     threading.Thread(target=_run, daemon=True).start()
 
 
+def get_window_class_name(hwnd):
+    """Return the Win32 window class of a window handle ('' when unavailable)."""
+    buffer = ctypes.create_unicode_buffer(256)
+    ctypes.windll.user32.GetClassNameW(hwnd, buffer, 256)
+    return buffer.value
+
+
 def find_lima_uia_window():
     """
     Return LIMA's top-level UIA window, or None.
 
-    Only Qt-class windows match, so an editor or terminal whose title merely
-    mentions "LIMA" (e.g. a VS Code window) is not mistaken for the app.
+    Only Qt windows match (by Win32 class, e.g. "Qt6100QWindowIcon"), so an
+    editor or terminal whose title merely mentions "LIMA" (e.g. a VS Code
+    window) is not mistaken for the app. UIA's own ClassName can't be used for
+    this: for Qt windows it reports the widget class instead ("MainWindow").
+    That widget class is used to prefer the main window over LIMA's loading
+    screen and dialogs.
     """
-    for window in uia.GetRootControl().GetChildren():
-        if window.Name and "LIMA" in window.Name and (window.ClassName or "").startswith("Qt"):
+    candidates = [
+        window for window in uia.GetRootControl().GetChildren()
+        if window.Name and "LIMA" in window.Name
+        and get_window_class_name(window.NativeWindowHandle).startswith("Qt")
+    ]
+    for window in candidates:
+        if window.ClassName == "MainWindow":
             return window
-    return None
+    return candidates[0] if candidates else None
 
 
 def find_lima_message_input(lima_window):
@@ -180,6 +196,11 @@ def type_into_lima(text, max_tabs=10):
     pressing Tab until a text input has focus, up to max_tabs times, and
     typing with pyautogui.
     """
+    # While LIMA's approval popup is open it captures every Y and N typed anywhere, so an
+    # "n" in the text would deny the pending action. Approve it before typing.
+    from lima_action_approver import approve_action_prompts
+    approve_action_prompts()
+
     try:
         lima_window = find_lima_uia_window()
         message_input = find_lima_message_input(lima_window) if lima_window else None
@@ -296,15 +317,15 @@ def verify_text_in_lima_input(expected_text):
         # Get the text value from the Edit control
         try:
             value = None
-            # Method 1: ValuePattern.Value (correct API for uiautomation library)
+            # Method 1: ValuePattern.Value
             try:
-                value = edit_control.ValuePattern.Value
+                value = edit_control.GetValuePattern().Value
             except Exception:
                 pass
             # Method 2: TextPattern (also available on QTextEdit)
             if not value:
                 try:
-                    value = edit_control.TextPattern.DocumentRange.GetText(-1)
+                    value = edit_control.GetTextPattern().DocumentRange.GetText(-1)
                 except Exception:
                     pass
             # Method 3: Name attribute (last resort)
