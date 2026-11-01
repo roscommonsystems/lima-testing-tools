@@ -28,7 +28,7 @@ from lima_auth import LimaAuth
 # already do `from lima_test_utils import SLEEP_A, ...` keep working unchanged.
 from globals import (
     SLEEP_A, SLEEP_B, SLEEP_C, SLEEP_D,
-    OPENROUTER_BASE_URL, VISION_MODEL, VISION_TEMPERATURE,
+    OPENROUTER_BASE_URL, VISION_MODEL, VISION_TEMPERATURE, VISION_REASONING_EFFORT,
     AI_RESPONSE_WAIT_SECONDS, AUDIO_MAX_DURATION_S,
 )
 
@@ -928,7 +928,11 @@ def verify_tool_with_screenshots(before_screenshot, after_screenshot, tool_name,
                 }
             ],
             temperature=VISION_TEMPERATURE,
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
+            # OpenRouter-only field: pin the judge's thinking level so verdicts stay
+            # reproducible. None in globals.py omits it (provider default).
+            extra_body=({"reasoning": {"effort": VISION_REASONING_EFFORT}}
+                        if VISION_REASONING_EFFORT else None)
         )
 
         # Parse the response

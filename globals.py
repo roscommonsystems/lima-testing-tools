@@ -14,6 +14,11 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 VISION_MODEL = "google/gemini-3-flash-preview"
 VISION_TEMPERATURE = 0
 
+# Thinking level for the vision judge: "minimal" | "low" | "medium" | "high" (OpenRouter maps
+# these to Gemini's thinkingLevel; thinking tokens are billed as output). None = omit the field
+# and use whatever the provider defaults to.
+VISION_REASONING_EFFORT = "low"
+
 # --- Timing ---------------------------------------------------------------------------
 SLEEP_A = 1   # Single UI action (key press, click, focus)
 SLEEP_B = 2   # Window state change (activate, maximize, restore)
