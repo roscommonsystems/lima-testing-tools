@@ -42,6 +42,13 @@ A green `OPEN_ROUTER_API_KEY: present ... Ready to run` means you're set.
 
 > **Important:** Never commit `secret_config.py` — it is excluded via `.gitignore`.
 
+#### Why the sign-in option exists
+
+- **No shared key to hand out.** Testers with a LIMA account don't need to be given an API key, so no shared key has to be passed around or kept out of this public repo.
+- **No second sign-in.** The tests drive a real copy of LIMA, which needs you to be signed in anyway, so the suite reuses that session.
+
+Option 1 is a shortcut for when you already have your own OpenRouter key.
+
 ## Running Tests
 
 Execute the regression test suite from the project root:

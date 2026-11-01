@@ -125,6 +125,7 @@ class LimaAuth:
             return {'valid': True, 'api_keys': api_keys}
 
         # Option 2: reuse the tester's LIMA sign-in to fetch keys from the auth server.
+        # See "Why the sign-in option exists" in the README.
         auth_url = self._auth_url()
         if not auth_url:
             return {'valid': False, 'error':
