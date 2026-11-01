@@ -2,16 +2,18 @@
 LIMA Authentication Module for Testing Suite
 
 Obtains the API keys the suite needs (notably OPEN_ROUTER_API_KEY, used for vision
-verification) by reusing the tester's existing LIMA sign-in, so no browser prompt or
-separate credentials are required.
+verification).
 
-Setup (see secret_config.py.example):
-    * The tester must be signed into LIMA once beforehand.
-    * Create a single gitignored secret_config.py holding both:
+Setup (see secret_config.py.example) - create a single gitignored secret_config.py holding
+ONE of:
+    1. OPEN_ROUTER_API_KEY - a pasted OpenRouter API key, used as-is. Option 2 is skipped.
+    2. Both of the following, which reuse the tester's existing LIMA sign-in, so no
+       browser prompt or separate credentials are required. The tester must be signed
+       into LIMA once beforehand.
           FIREBASE_API_KEY - the Firebase Web API key, used to refresh the LIMA session.
           AUTH_URL         - the base URL of the LIMA auth server.
-      Either value may instead be supplied via an environment variable
-      (LIMA_FIREBASE_API_KEY / LIMA_AUTH_URL), which takes precedence.
+Any value may instead be supplied via an environment variable (LIMA_OPEN_ROUTER_API_KEY /
+LIMA_FIREBASE_API_KEY / LIMA_AUTH_URL), which takes precedence.
 
 The public interface (LimaAuth.validate_license() -> dict with an 'api_keys' entry) is
 kept stable, so the rest of the suite is unaffected.
@@ -38,7 +40,7 @@ def _is_placeholder(value: Optional[str]) -> bool:
 
 
 class LimaAuth:
-    """Retrieves API keys for the suite by reusing the tester's existing LIMA sign-in."""
+    """Retrieves API keys for the suite, from secret_config or the tester's LIMA sign-in."""
 
     def __init__(self):
         self._api_keys: Dict[str, str] = {}
@@ -74,6 +76,10 @@ class LimaAuth:
     def _auth_url(self) -> Optional[str]:
         """Base URL of the LIMA auth server."""
         return self._setting("LIMA_AUTH_URL", "AUTH_URL")
+
+    def _open_router_api_key(self) -> Optional[str]:
+        """OpenRouter API key pasted into secret_config, which skips the sign-in flow."""
+        return self._setting("LIMA_OPEN_ROUTER_API_KEY", "OPEN_ROUTER_API_KEY")
 
     def _load_refresh_token(self) -> Optional[str]:
         """Read the stored LIMA session token."""
@@ -111,11 +117,20 @@ class LimaAuth:
 
         Name and return shape kept for compatibility with the rest of the suite.
         """
+        # Option 1: a pasted OpenRouter key is used as-is.
+        open_router_key = self._open_router_api_key()
+        if open_router_key:
+            api_keys = {'OPEN_ROUTER_API_KEY': open_router_key}
+            self._api_keys = api_keys
+            return {'valid': True, 'api_keys': api_keys}
+
+        # Option 2: reuse the tester's LIMA sign-in to fetch keys from the auth server.
         auth_url = self._auth_url()
         if not auth_url:
             return {'valid': False, 'error':
-                    'AUTH_URL is not set. Add it to secret_config.py '
-                    '(copy secret_config.py.example and fill it in).'}
+                    'AUTH_URL is not set. In secret_config.py, either paste an '
+                    'OPEN_ROUTER_API_KEY, or fill in AUTH_URL and FIREBASE_API_KEY to use '
+                    'your LIMA sign-in (copy secret_config.py.example to start).'}
 
         refresh_token = self._load_refresh_token()
         if not refresh_token:

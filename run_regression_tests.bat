@@ -109,8 +109,9 @@ if exist "secret_config.py" (
         copy /Y "secret_config.py.example" "secret_config.py" >nul
         echo Created secret_config.py from the example.
     )
-    echo Open secret_config.py and fill in FIREBASE_API_KEY and AUTH_URL
-    echo ^(instructions are inside the file^), then run this script again.
+    echo Open secret_config.py and either paste an OpenRouter API key, or fill in
+    echo FIREBASE_API_KEY and AUTH_URL ^(instructions are inside the file^), then run
+    echo this script again.
     echo ==================================================
     echo.
     pause

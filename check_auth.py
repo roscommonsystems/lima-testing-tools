@@ -5,11 +5,11 @@ Confirms the suite can obtain OPEN_ROUTER_API_KEY WITHOUT running the full regre
 suite. Use it to verify setup before a run so a misconfiguration fails in seconds instead
 of mid-run.
 
-Prerequisites:
-  1. LIMA installed and signed in beforehand.
-  2. A gitignored secret_config.py (copy secret_config.py.example) with both
-     FIREBASE_API_KEY and AUTH_URL filled in. Each may instead be supplied via the
-     LIMA_FIREBASE_API_KEY / LIMA_AUTH_URL environment variables.
+Prerequisites - a gitignored secret_config.py (copy secret_config.py.example) with ONE of:
+  1. OPEN_ROUTER_API_KEY pasted in, or
+  2. FIREBASE_API_KEY and AUTH_URL filled in, with LIMA installed and signed in beforehand.
+Each value may instead be supplied via the LIMA_OPEN_ROUTER_API_KEY /
+LIMA_FIREBASE_API_KEY / LIMA_AUTH_URL environment variables.
 
 Run (from the project root, inside the venv):
   python check_auth.py
@@ -39,7 +39,7 @@ def main():
     print("other keys present:", {k: bool(v) for k, v in keys.items()})
 
     if open_router_key:
-        print("\nOK - the suite can authenticate via your LIMA session. Ready to run.")
+        print("\nOK - the suite has an OpenRouter key. Ready to run.")
         return 0
     print("\nX No OpenRouter key returned - is your account provisioned on this auth server?")
     return 1

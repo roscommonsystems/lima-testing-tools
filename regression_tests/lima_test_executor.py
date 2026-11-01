@@ -87,11 +87,12 @@ class LimaTestExecutor:
             print("Checking API key availability...")
             if not initialize_openrouter_api_key():
                 print("ERROR: OPEN_ROUTER_API_KEY could not be retrieved. Aborting test run.")
-                print("  Hint: sign into LIMA first, then fill in FIREBASE_API_KEY and AUTH_URL in")
-                print("        secret_config.py. See the exact reason printed just above.")
+                print("  Hint: in secret_config.py, either paste an OPEN_ROUTER_API_KEY, or sign")
+                print("        into LIMA and fill in FIREBASE_API_KEY and AUTH_URL. See the exact")
+                print("        reason printed just above.")
                 self.reporter.finalize_results()
                 self._msgbox("LIMA Tests Aborted",
-                             "Could not authenticate.\n\nSign into LIMA, then re-run.\n"
+                             "Could not authenticate.\n\nCheck secret_config.py, then re-run.\n"
                              "(See the console for the exact reason.)", error=True)
                 return False
             print("  OK API key verified\n")

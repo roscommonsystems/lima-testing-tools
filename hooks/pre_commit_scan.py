@@ -36,6 +36,7 @@ FORBIDDEN_PATTERNS = [
     ("local Linux home path", re.compile(r"/home/[^/\s\"']+/")),
     ("private key block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
     ("Google/Firebase API key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b")),
+    ("OpenRouter API key", re.compile(r"\bsk-or-v1-[0-9a-f]{64}\b")),
     ("AWS access key id", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
     ("Slack token", re.compile(r"\bxox[baprs]-[0-9A-Za-z-]{10,}\b")),
 ]

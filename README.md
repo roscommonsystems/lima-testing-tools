@@ -23,11 +23,12 @@ pip install -r requirements.txt
 
 ### 2. Configure Authentication
 
-The suite uses your existing LIMA sign-in to obtain the API keys it needs, so setup is:
+The suite needs an OpenRouter API key for its screenshot checks. Copy `secret_config.py.example` to `secret_config.py` (the only file you need to set up) and choose one option:
 
-1. **Sign into LIMA once** beforehand.
-2. **Create `secret_config.py`** — copy `secret_config.py.example` to `secret_config.py` and fill in both `FIREBASE_API_KEY` and `AUTH_URL` (the file explains where to find each). This is the only file you need to set up.
-   - Alternatively, each value can be supplied via an environment variable instead: `LIMA_FIREBASE_API_KEY` and `LIMA_AUTH_URL`.
+- **Option 1 — paste an OpenRouter API key:** fill in `OPEN_ROUTER_API_KEY`. The suite uses it as-is and ignores the other two values.
+- **Option 2 — reuse your LIMA sign-in:** leave `OPEN_ROUTER_API_KEY` empty, sign into LIMA once beforehand, and fill in both `FIREBASE_API_KEY` and `AUTH_URL`. The suite then fetches its keys from the LIMA auth server.
+
+The file explains where to find each value. Alternatively, each value can be supplied via an environment variable instead: `LIMA_OPEN_ROUTER_API_KEY`, `LIMA_FIREBASE_API_KEY` and `LIMA_AUTH_URL`.
 
 Verify the setup before a full run (~5 seconds):
 
@@ -37,7 +38,7 @@ python check_auth.py
 
 A green `OPEN_ROUTER_API_KEY: present ... Ready to run` means you're set.
 
-> **Note:** Your LIMA account must be provisioned on the auth server for it to return keys.
+> **Note:** For option 1, this only confirms a key is set, not that OpenRouter accepts it. For option 2, your LIMA account must be provisioned on the auth server for it to return keys.
 
 > **Important:** Never commit `secret_config.py` — it is excluded via `.gitignore`.
 
@@ -73,7 +74,7 @@ lima-testing-suite/
 ├── run_regression_tests.bat    # Windows batch launcher
 ├── lima_auth.py                # Authentication for the suite
 ├── check_auth.py               # Quick auth-setup verification before a run
-├── secret_config.py.example    # Example config: copy to secret_config.py, fill in both values
+├── secret_config.py.example    # Example config: copy to secret_config.py, fill in one option
 └── regression_tests/
     ├── lima_process_manager.py     # LIMA application lifecycle management
     ├── lima_test_executor.py       # Test execution logic
@@ -88,13 +89,13 @@ lima-testing-suite/
 ## Security Notes
 
 - **Never commit sensitive files:** `secret_config.py` is excluded from version control.
-- **Keep credentials out of code:** keep `FIREBASE_API_KEY` and `AUTH_URL` in the gitignored `secret_config.py` (or in env vars), never in committed code.
-- **API keys are retrieved dynamically:** they are provided at runtime, never stored in code.
+- **Keep credentials out of code:** keep `OPEN_ROUTER_API_KEY`, `FIREBASE_API_KEY` and `AUTH_URL` in the gitignored `secret_config.py` (or in env vars), never in committed code. This repo is public.
+- **Limit a pasted OpenRouter key:** give it a credit limit on OpenRouter, so a leaked key can only spend that much.
 
 ## Troubleshooting
 
 ### "AUTH_URL is not set"
-Fill in `AUTH_URL` in `secret_config.py` (or set the `LIMA_AUTH_URL` env var).
+No credentials are configured. In `secret_config.py`, either paste an `OPEN_ROUTER_API_KEY` (option 1), or fill in `AUTH_URL` and `FIREBASE_API_KEY` (option 2). Env vars work too.
 
 ### "No LIMA sign-in session found"
 Sign into LIMA first; the suite uses that session.
