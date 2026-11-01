@@ -38,13 +38,13 @@ python check_auth.py
 
 A green `OPEN_ROUTER_API_KEY: present ... Ready to run` means you're set.
 
-To check the whole environment at once (dependencies, LIMA install, display, audio output and auth, ~5 seconds):
+To check the whole environment at once (dependencies, LIMA install, display, audio output, ~5 seconds):
 
 ```bash
 python preflight.py
 ```
 
-`run_regression_tests.bat` runs this automatically before the tests and stops if anything is wrong, so a misconfigured machine fails in seconds rather than an hour into a run.
+It also sets up `secret_config.py` for you: if the file is missing it is created from the example, and any variable it lacks is added along with a note on where to find the value. Auth is only reported, never enforced — one working option is enough, and it is not what this suite tests. `run_regression_tests.bat` runs this automatically before the tests and stops if the machine is not ready, so a misconfigured machine fails in seconds rather than an hour into a run.
 
 > **Note:** For option 1, this only confirms a key is set, not that OpenRouter accepts it. For option 2, your LIMA account must be provisioned on the auth server for it to return keys.
 

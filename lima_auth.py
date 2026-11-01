@@ -35,7 +35,11 @@ SECURE_TOKEN_URL = "https://securetoken.googleapis.com/v1/token"
 _PLACEHOLDER_MARKERS = ("YOUR-LIMA-AUTH-SERVER", "your Firebase Web API key here", "AIza...your")
 
 
-def _is_placeholder(value: Optional[str]) -> bool:
+def is_placeholder(value: Optional[str]) -> bool:
+    """True when a value is an unedited example copied from secret_config.py.example.
+
+    Empty values are not placeholders — they simply mean "not set".
+    """
     return bool(value) and any(marker in value for marker in _PLACEHOLDER_MARKERS)
 
 
@@ -60,12 +64,12 @@ class LimaAuth:
         Placeholder values left over from the example file count as unset.
         """
         env_value = os.environ.get(env_var, "").strip()
-        if env_value and not _is_placeholder(env_value):
+        if env_value and not is_placeholder(env_value):
             return env_value
         sc = self._secret_config()
         if sc is not None:
             value = (getattr(sc, attr, "") or "").strip()
-            if value and not _is_placeholder(value):
+            if value and not is_placeholder(value):
                 return value
         return None
 

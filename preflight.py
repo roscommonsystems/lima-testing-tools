@@ -12,6 +12,7 @@ Run (from the project root, inside the venv):
 
 import ctypes
 import os
+import shutil
 import sys
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -55,17 +56,123 @@ def check_dependencies():
     return True, f"all {len(REQUIRED_MODULES)} required packages import"
 
 
+# Each credential the suite can read, with a short note on where the value comes from.
+# Used to scaffold secret_config.py and to tell the user where to look.
+CREDENTIALS = (
+    ("OPEN_ROUTER_API_KEY",
+     "https://openrouter.ai/settings/keys - or leave it empty and use the LIMA sign-in "
+     "option, which needs FIREBASE_API_KEY and AUTH_URL instead"),
+    ("FIREBASE_API_KEY",
+     "Firebase console -> Project Settings -> General -> Web API Key "
+     "(ask the LIMA team which Firebase project this suite uses)"),
+    ("AUTH_URL",
+     "ask the LIMA team, or copy it from the Cloud Run console for the LIMA project"),
+)
+
+
+def _read_module_strings(path):
+    """
+    Read a Python file's module-level assignments without executing it.
+
+    Returns:
+        tuple: (set of assigned names, dict of name -> literal string value)
+    """
+    import ast
+
+    with open(path, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), filename=path)
+
+    assigned = set()
+    values = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            targets = [node.target]
+        else:
+            continue
+        for target in targets:
+            if not isinstance(target, ast.Name):
+                continue
+            assigned.add(target.id)
+            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                values[target.id] = node.value.value
+    return assigned, values
+
+
+def _append_credential(path, name, help_text):
+    """Append a missing credential to secret_config.py, noting where to find its value."""
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(f"\n# Where to find it: {help_text}\n{name} = \"\"\n")
+
+
 def check_credentials():
-    """secret_config.py (or the equivalent environment variables) must be present."""
-    if os.path.exists(os.path.join(PROJECT_ROOT, "secret_config.py")):
-        return True, "secret_config.py present"
+    """Make sure secret_config.py exists and defines every credential the suite reads.
 
-    env_vars = ("LIMA_OPEN_ROUTER_API_KEY", "LIMA_FIREBASE_API_KEY", "LIMA_AUTH_URL")
-    if any(os.environ.get(name) for name in env_vars):
-        return True, "credentials supplied via environment variables"
+    This is setup help, not a gate. A missing variable is appended to the file (which is
+    gitignored) together with a note on where its value comes from, and the check passes
+    either way: whether auth actually works is not what this suite tests, and having only
+    one of the two auth options configured is fine.
+    """
+    from lima_auth import is_placeholder
 
-    return False, ("secret_config.py not found - copy secret_config.py.example "
-                   "(or set LIMA_OPEN_ROUTER_API_KEY / LIMA_FIREBASE_API_KEY / LIMA_AUTH_URL)")
+    config_path = os.path.join(PROJECT_ROOT, "secret_config.py")
+    example_path = os.path.join(PROJECT_ROOT, "secret_config.py.example")
+    notes = []
+
+    # A tester can supply everything through environment variables and skip the file.
+    env_names = [f"LIMA_{name}" for name, _ in CREDENTIALS]
+    if not os.path.exists(config_path) and any(os.environ.get(name) for name in env_names):
+        return True, "credentials supplied via environment variables", notes
+
+    created = False
+    if not os.path.exists(config_path):
+        if not os.path.exists(example_path):
+            return True, "secret_config.py is missing (no example file to copy from)", notes
+        shutil.copyfile(example_path, config_path)
+        created = True
+        notes.append("created secret_config.py from secret_config.py.example")
+
+    assigned, values = _read_module_strings(config_path)
+
+    added = []
+    for name, help_text in CREDENTIALS:
+        if name in assigned:
+            continue
+        _append_credential(config_path, name, help_text)
+        added.append(name)
+
+    if added:
+        assigned, values = _read_module_strings(config_path)
+        notes.append(f"added the missing variable(s) {', '.join(added)} to secret_config.py")
+
+    if created:
+        message = "secret_config.py created from the example"
+    elif added:
+        message = "secret_config.py updated"
+    else:
+        message = "secret_config.py present"
+
+    setup_notes = list(notes)
+
+    def has_value(name):
+        value = values.get(name, "")
+        return bool(value.strip()) and not is_placeholder(value)
+
+    # One complete option is all the suite needs, so don't nag about the other one.
+    if has_value("OPEN_ROUTER_API_KEY"):
+        setup_notes.append("auth: using the pasted OpenRouter key (option 1)")
+        return True, message, setup_notes
+    if has_value("FIREBASE_API_KEY") and has_value("AUTH_URL"):
+        setup_notes.append("auth: using your LIMA sign-in (option 2)")
+        return True, message, setup_notes
+
+    for name, help_text in CREDENTIALS:
+        if has_value(name):
+            continue
+        notes.append(f"{name} has no value yet - where to find it: {help_text}")
+
+    return True, message, notes
 
 
 def check_lima_installed():
@@ -116,7 +223,12 @@ def check_audio_output():
 
 
 def check_auth():
-    """The suite needs an OpenRouter key for its screenshot checks (see README)."""
+    """
+    Report whether the suite can already obtain an OpenRouter key right now.
+
+    Advisory only - see check_credentials: auth is not what the suite tests, and either
+    auth option on its own is enough. A "not ready" answer here never fails preflight.
+    """
     from lima_auth import LimaAuth
 
     result = LimaAuth().validate_license()
@@ -145,29 +257,46 @@ def main():
         ("Audio output", check_audio_output),
         ("Auth", check_auth),
     ]
+    # Auth is informational: the suite accepts either a pasted OpenRouter key or the LIMA
+    # sign-in, and auth is not what it tests, so a "not ready" auth never blocks a run.
+    advisory_labels = {"Auth"}
 
     print("LIMA Testing Suite - preflight checks")
     print("=" * 50)
 
     failures = 0
+    advisory_problems = []
     for label, check in checks:
-        if label == "Auth" and skip_auth:
+        if label in advisory_labels and skip_auth:
             print(f"  [--] {label}: skipped (--no-auth)")
             continue
 
         try:
-            ok, message = check()
+            result = check()
         except Exception as error:
-            ok, message = False, f"check crashed: {error}"
+            result = (False, f"check crashed: {error}")
 
-        print(f"  [{'OK' if ok else 'X '}] {label}: {message}")
-        if not ok:
-            failures += 1
-            # The remaining checks import or drive the environment, so there is no
-            # point running them when the basics are missing.
-            if label in ("Python version", "Dependencies"):
-                print("\n  Install the prerequisites above, then run this check again.")
-                return 1
+        ok, message = result[0], result[1]
+        notes = result[2] if len(result) > 2 else ()
+        is_advisory = label in advisory_labels
+
+        mark = "OK" if ok else ("! " if is_advisory else "X ")
+        print(f"  [{mark}] {label}: {message}")
+        for note in notes:
+            print(f"         {note}")
+
+        if ok:
+            continue
+        if is_advisory:
+            advisory_problems.append(label)
+            continue
+
+        failures += 1
+        # The remaining checks import or drive the environment, so there is no point
+        # running them when the basics are missing.
+        if label in ("Python version", "Dependencies"):
+            print("\n  Install the prerequisites above, then run this check again.")
+            return 1
 
     print("=" * 50)
     if failures:
@@ -175,6 +304,9 @@ def main():
         return 1
 
     print("OK - this machine is ready for a full run (python main.py).")
+    if advisory_problems:
+        print("   Note: auth is not ready yet, which does not block a run - the suite stops at")
+        print("   startup with the exact missing piece if it still cannot get a key.")
     return 0
 
 
