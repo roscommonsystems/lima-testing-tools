@@ -20,19 +20,21 @@ import psutil
 from openai import OpenAI
 import uiautomation as uia
 
-# Add parent directory to path to import lima_auth
+# Add parent directory to path to import lima_auth and the top-level globals module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lima_auth import LimaAuth
+
+# Suite-wide tunables (see globals.py at the repo root). Re-exported here so modules that
+# already do `from lima_test_utils import SLEEP_A, ...` keep working unchanged.
+from globals import (
+    SLEEP_A, SLEEP_B, SLEEP_C, SLEEP_D,
+    OPENROUTER_BASE_URL, VISION_MODEL, VISION_TEMPERATURE,
+    AI_RESPONSE_WAIT_SECONDS, AUDIO_MAX_DURATION_S,
+)
 
 # Test result constants
 TEST_PASSED = "PASSED"
 TEST_FAILED = "FAILED"
-
-# Sleep tier constants
-SLEEP_A = 1   # Single UI action (key press, click, focus)
-SLEEP_B = 2   # Window state change (activate, maximize, restore)
-SLEEP_C = 10  # App/dialog appear, post-submit, post-launch settle, between-test pause
-SLEEP_D = 20  # LIMA process startup
 
 # Configure pyautogui
 pyautogui.FAILSAFE = False
@@ -45,7 +47,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 _api_keys = {}
 
 
-def measure_peak_audio(max_duration_s=15, poll_hz=20, exclude_pids=None,
+def measure_peak_audio(max_duration_s=AUDIO_MAX_DURATION_S, poll_hz=20, exclude_pids=None,
                        sustain_threshold=0.005, sustain_samples=3):
     """
     Detect audio output by polling per-session peak meters via the Windows Core
@@ -854,7 +856,7 @@ def verify_tool_with_screenshots(before_screenshot, after_screenshot, tool_name,
 
         # Create OpenRouter client
         client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
+            base_url=OPENROUTER_BASE_URL,
             api_key=open_router_api_key
         )
 
@@ -887,9 +889,9 @@ def verify_tool_with_screenshots(before_screenshot, after_screenshot, tool_name,
         Please examine both screenshots and determine if the tool worked correctly.
         Remember to respond ONLY in JSON format with 'explanation' and 'answer' keys."""
 
-        # Call OpenRouter API with Gemini 3 model
+        # Call the OpenRouter vision model
         response = client.chat.completions.create(
-            model="google/gemini-3-flash-preview",
+            model=VISION_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -925,7 +927,7 @@ def verify_tool_with_screenshots(before_screenshot, after_screenshot, tool_name,
                     ]
                 }
             ],
-            temperature=0,
+            temperature=VISION_TEMPERATURE,
             response_format={"type": "json_object"}
         )
 

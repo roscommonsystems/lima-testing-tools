@@ -12,7 +12,8 @@ from lima_test_utils import (
     take_screenshot, verify_tool_with_screenshots, overlay_cursor_on_screenshot,
     find_window_by_title, measure_peak_audio, open_file_menu_item,
     TEST_PASSED, TEST_FAILED, speak_tts, type_into_lima,
-    SLEEP_A, SLEEP_B, SLEEP_C, SLEEP_D
+    SLEEP_A, SLEEP_B, SLEEP_C, SLEEP_D,
+    AI_RESPONSE_WAIT_SECONDS, AUDIO_MAX_DURATION_S
 )
 
 
@@ -222,7 +223,7 @@ def run_all_tool_tests(executor, kinds=None):
                 time.sleep(SLEEP_C)
 
                 # Step 9: Wait for AI execution
-                wait_time = 30
+                wait_time = AI_RESPONSE_WAIT_SECONDS
                 print(f"  Waiting for AI to process ({wait_time} seconds)...")
 
                 for sec in range(wait_time):
@@ -259,8 +260,8 @@ def run_all_tool_tests(executor, kinds=None):
                 type_into_lima(test["command"])
                 time.sleep(SLEEP_A)
                 pyautogui.press('enter')
-                print("  Listening for audio (up to 15s)...")
-                audio_result = measure_peak_audio(max_duration_s=15, poll_hz=20)
+                print(f"  Listening for audio (up to {AUDIO_MAX_DURATION_S}s)...")
+                audio_result = measure_peak_audio(max_duration_s=AUDIO_MAX_DURATION_S, poll_hz=20)
 
             # Step 10: Take AFTER screenshot (for visual verification)
             after_screenshot = None

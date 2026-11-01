@@ -78,6 +78,7 @@ lima-testing-suite/
 ├── README.md                   # This file
 ├── requirements.txt            # Python dependencies
 ├── main.py                     # Main entry point
+├── globals.py                  # Suite tunables (vision model, sleeps, AI wait, audio window)
 ├── run_regression_tests.bat    # Windows batch launcher
 ├── lima_auth.py                # Authentication for the suite
 ├── check_auth.py               # Quick auth-setup verification before a run

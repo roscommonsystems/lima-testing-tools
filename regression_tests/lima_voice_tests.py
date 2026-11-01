@@ -12,6 +12,7 @@ import uiautomation as uia
 from lima_test_utils import (
     measure_peak_audio, type_into_lima, TEST_PASSED, TEST_FAILED,
     speak_tts, SLEEP_A, SLEEP_B, SLEEP_C,
+    AUDIO_MAX_DURATION_S,
 )
 from lima_model_tests import _open_settings  # generic "open the Settings dialog" helper
 
@@ -211,8 +212,8 @@ def run_all_voice_tests(executor):
             pyautogui.press('enter')
 
             # Step 3: Measure per-session audio peak during the spoken response
-            print("  Listening for audio (up to 15s)...")
-            audio_result = measure_peak_audio(max_duration_s=15, poll_hz=20)
+            print(f"  Listening for audio (up to {AUDIO_MAX_DURATION_S}s)...")
+            audio_result = measure_peak_audio(max_duration_s=AUDIO_MAX_DURATION_S, poll_hz=20)
 
             # Step 4: Record result
             if not executor.process_manager.is_running():
