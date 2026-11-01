@@ -9,13 +9,13 @@ Nothing here is secret - credentials live in the gitignored secret_config.py.
 """
 
 # --- Vision verification (OpenRouter) --------------------------------------------------
-# The suite's screenshot checks ask an OpenRouter-hosted Gemini model whether a tool worked.
+# The suite's screenshot checks ask an OpenRouter-hosted model whether a tool worked.
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-VISION_MODEL = "google/gemini-3-flash-preview"
+VISION_MODEL = "deepseek/deepseek-v4.1-flash-1017"
 VISION_TEMPERATURE = 0
 
 # Thinking level for the vision judge: "minimal" | "low" | "medium" | "high" (OpenRouter maps
-# these to Gemini's thinkingLevel; thinking tokens are billed as output). None = omit the field
+# these to thinkingLevel; thinking tokens are billed as output). None = omit the field
 # and use whatever the provider defaults to.
 VISION_REASONING_EFFORT = "low"
 
