@@ -21,7 +21,7 @@ echo.
 REM --------------------------------------------------
 REM Step 1: Check if Python is installed
 REM --------------------------------------------------
-echo [1/6] Checking Python installation...
+echo [1/7] Checking Python installation...
 where python >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -45,7 +45,7 @@ echo.
 REM --------------------------------------------------
 REM Step 2: Check/Create virtual environment
 REM --------------------------------------------------
-echo [2/6] Checking virtual environment...
+echo [2/7] Checking virtual environment...
 if exist ".venv" (
     echo       Virtual environment found.
 ) else (
@@ -66,7 +66,7 @@ echo.
 REM --------------------------------------------------
 REM Step 3: Activate virtual environment
 REM --------------------------------------------------
-echo [3/6] Activating virtual environment...
+echo [3/7] Activating virtual environment...
 call .venv\Scripts\activate.bat
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -81,7 +81,7 @@ echo.
 REM --------------------------------------------------
 REM Step 4: Install/Update dependencies
 REM --------------------------------------------------
-echo [4/6] Installing dependencies...
+echo [4/7] Installing dependencies...
 pip install -r requirements.txt --quiet
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -94,7 +94,7 @@ echo.
 REM --------------------------------------------------
 REM Step 5: Check/Create configuration
 REM --------------------------------------------------
-echo [5/6] Checking configuration...
+echo [5/7] Checking configuration...
 if exist "secret_config.py" (
     echo       Configuration file found.
 ) else (
@@ -120,9 +120,27 @@ if exist "secret_config.py" (
 echo.
 
 REM --------------------------------------------------
-REM Step 6: Run tests
+REM Step 6: Preflight checks
 REM --------------------------------------------------
-echo [6/6] Running regression tests...
+echo [6/7] Running preflight checks...
+python preflight.py
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo ==================================================
+    echo ERROR: Preflight checks failed
+    echo ==================================================
+    echo.
+    echo Fix the items reported above, then run this script again.
+    echo.
+    pause
+    exit /b 1
+)
+echo.
+
+REM --------------------------------------------------
+REM Step 7: Run tests
+REM --------------------------------------------------
+echo [7/7] Running regression tests...
 echo.
 echo ==================================================
 echo.

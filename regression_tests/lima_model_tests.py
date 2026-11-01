@@ -12,6 +12,7 @@ import uiautomation as uia
 from lima_test_utils import (
     take_screenshot, verify_tool_with_screenshots, minimize_all_other_windows,
     type_into_lima, speak_tts, open_file_menu_item, TEST_PASSED, TEST_FAILED,
+    save_failure_artifacts, with_artifact_note,
     SLEEP_A, SLEEP_B, SLEEP_C,
 )
 
@@ -373,12 +374,21 @@ def run_all_model_tests(executor):
                                          f"Model '{key}' set and LIMA responded: {result.get('explanation', '')}")
                 print(f"  OK {key} responded")
             elif result and result.get("answer") == "NO":
+                # Keep the screenshots the verdict was based on so the failure can be
+                # reviewed afterwards.
+                evidence_folder = save_failure_artifacts(result_name, before, after)
                 executor.add_test_result(result_name, TEST_FAILED,
-                                         f"Model '{key}' set but LIMA did not respond: {result.get('explanation', '')}")
+                                         with_artifact_note(
+                                             f"Model '{key}' set but LIMA did not respond: "
+                                             f"{result.get('explanation', '')}",
+                                             evidence_folder))
                 print(f"  X {key} did not respond")
             else:
+                evidence_folder = save_failure_artifacts(result_name, before, after)
                 executor.add_test_result(result_name, TEST_FAILED,
-                                         f"Model '{key}' - API verification unavailable")
+                                         with_artifact_note(
+                                             f"Model '{key}' - API verification unavailable",
+                                             evidence_folder))
                 print(f"  X {key} - verification unavailable")
 
             time.sleep(SLEEP_B)

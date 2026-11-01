@@ -8,10 +8,12 @@ import sys
 import json
 import time
 import base64
+import re
 import struct
 import ctypes
 import logging
 import threading
+from datetime import datetime
 from io import BytesIO
 import pyautogui
 import pygetwindow as gw
@@ -45,6 +47,12 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # Storage for API keys retrieved during license validation
 _api_keys = {}
+
+# Where screenshots behind a failed verdict are saved. One folder per suite run so
+# repeated runs never overwrite each other's evidence. reports/ is gitignored.
+ARTIFACTS_ROOT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reports", "artifacts")
+_RUN_STAMP = datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
 def measure_peak_audio(max_duration_s=AUDIO_MAX_DURATION_S, poll_hz=20, exclude_pids=None,
@@ -642,6 +650,66 @@ def take_screenshot():
         return None
 
 
+def save_failure_artifacts(test_name, before_screenshot=None, after_screenshot=None):
+    """
+    Save the screenshots behind a failed verdict so the failure can be reviewed
+    afterwards. Written under reports/artifacts/<run stamp>/<test name>/, which is
+    gitignored.
+
+    Args:
+        test_name (str): Name of the test; used as the folder name.
+        before_screenshot: PIL.Image captured before the action, or None.
+        after_screenshot: PIL.Image captured after the action, or None.
+
+    Returns:
+        str: Folder holding the saved images, or None if nothing could be saved.
+    """
+    images = [("before", before_screenshot), ("after", after_screenshot)]
+    images = [(label, image) for label, image in images if image is not None]
+    if not images:
+        print("  ! No screenshots available to save for this failure")
+        return None
+
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "_", test_name or "test").strip("_").lower() or "test"
+    base_folder = os.path.join(ARTIFACTS_ROOT, _RUN_STAMP, slug)
+    folder = base_folder
+    suffix = 2
+    while os.path.exists(folder):
+        folder = f"{base_folder}-{suffix}"
+        suffix += 1
+
+    saved = []
+    try:
+        os.makedirs(folder, exist_ok=True)
+        for label, image in images:
+            image.convert('RGB').save(os.path.join(folder, f"{label}.jpg"),
+                                      format='JPEG', quality=95)
+            saved.append(f"{label}.jpg")
+    except Exception as error:
+        print(f"  ! Could not save failure screenshots: {error}")
+        return None
+
+    print(f"  Saved failure screenshots ({', '.join(saved)}) to: {folder}")
+    return folder
+
+
+def with_artifact_note(message, folder):
+    """
+    Attach the screenshot folder to a test result message, so the evidence is easy
+    to find from the console summary and from test_results.json.
+
+    Args:
+        message (str): The result message.
+        folder (str): Folder returned by save_failure_artifacts, or None.
+
+    Returns:
+        str: The message, with " [screenshots: <folder>]" appended when there is one.
+    """
+    if not folder:
+        return message
+    return f"{message} [screenshots: {folder}]"
+
+
 def screenshot_to_base64(screenshot_image):
     """
     Convert a PIL screenshot image to base64-encoded JPEG string.
@@ -824,7 +892,8 @@ def initialize_openrouter_api_key():
 
 def verify_tool_with_screenshots(before_screenshot, after_screenshot, tool_name, verification_prompt):
     """
-    Verify tool execution by comparing before/after screenshots using OpenRouter Gemini model.
+    Verify tool execution by comparing before/after screenshots using an
+    OpenRouter-hosted vision model.
 
     Args:
         before_screenshot: PIL.Image of screen before tool execution
@@ -929,8 +998,9 @@ def verify_tool_with_screenshots(before_screenshot, after_screenshot, tool_name,
             ],
             temperature=VISION_TEMPERATURE,
             response_format={"type": "json_object"},
-            # OpenRouter-only field: pin the judge's thinking level so verdicts stay
-            # reproducible. None in globals.py omits it (provider default).
+            # OpenRouter's generic reasoning-effort field: pin the judge's reasoning so
+            # verdicts stay reproducible. Providers without support ignore it; None in
+            # globals.py omits the field entirely (provider default).
             extra_body=({"reasoning": {"effort": VISION_REASONING_EFFORT}}
                         if VISION_REASONING_EFFORT else None)
         )

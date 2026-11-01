@@ -11,6 +11,7 @@ import pyautogui
 from lima_test_utils import (
     take_screenshot, verify_tool_with_screenshots, overlay_cursor_on_screenshot,
     find_window_by_title, measure_peak_audio, open_file_menu_item,
+    save_failure_artifacts, with_artifact_note,
     TEST_PASSED, TEST_FAILED, speak_tts, type_into_lima,
     SLEEP_A, SLEEP_B, SLEEP_C, SLEEP_D,
     AI_RESPONSE_WAIT_SECONDS, AUDIO_MAX_DURATION_S
@@ -311,10 +312,10 @@ def run_all_tool_tests(executor, kinds=None):
                         time.sleep(SLEEP_A)
                         open_file_menu_item(test.get("menu_item_name"), test["menu_nav_keys"])
 
-            # Step 11: Verification using OpenRouter Gemini
+            # Step 11: Verification using the OpenRouter vision model
             verification_result = None
             if verification_type != "no_verification" and before_screenshot and after_screenshot:
-                print("  Verifying with OpenRouter Gemini model...")
+                print("  Verifying with the vision model...")
                 verification_result = verify_tool_with_screenshots(
                     before_screenshot=before_screenshot,
                     after_screenshot=after_screenshot,
@@ -403,25 +404,34 @@ def run_all_tool_tests(executor, kinds=None):
                     print(f"  OK {test_name} test PASSED")
                     print(f"    Note: {explanation}")
                 elif verification_result and verification_result.get("answer") == "NO":
-                    # Tool verified as NOT working
+                    # Tool verified as NOT working. Keep the screenshots the verdict was
+                    # based on, so the failure can be reviewed afterwards.
                     explanation = verification_result.get("explanation", "No explanation provided")
+                    evidence_folder = save_failure_artifacts(result_name, before_screenshot, after_screenshot)
                     executor.add_test_result(
                         result_name, TEST_FAILED,
-                        f"{test_name} verification failed: {explanation}"
+                        with_artifact_note(f"{test_name} verification failed: {explanation}",
+                                           evidence_folder)
                     )
                     print(f"  X {test_name} test FAILED")
                     print(f"    Note: {explanation}")
                 else:
                     # Verification failed or not available
+                    evidence_folder = save_failure_artifacts(result_name, before_screenshot, after_screenshot)
                     executor.add_test_result(
                         result_name, TEST_FAILED,
-                        f"{test_name} — API verification unavailable — cannot confirm result"
+                        with_artifact_note(
+                            f"{test_name} — API verification unavailable — cannot confirm result",
+                            evidence_folder)
                     )
                     print(f"  X {test_name} test FAILED (API verification unavailable)")
             else:
+                # LIMA died mid-test: keep the before screenshot as evidence of the state
+                # it was in when the run failed.
+                evidence_folder = save_failure_artifacts(result_name, before_screenshot=before_screenshot)
                 executor.add_test_result(
                     result_name, TEST_FAILED,
-                    f"{test_name} failed - LIMA crashed"
+                    with_artifact_note(f"{test_name} failed - LIMA crashed", evidence_folder)
                 )
                 print(f"  X {test_name} test FAILED - LIMA crashed")
 

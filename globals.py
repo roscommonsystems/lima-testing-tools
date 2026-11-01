@@ -10,13 +10,15 @@ Nothing here is secret - credentials live in the gitignored secret_config.py.
 
 # --- Vision verification (OpenRouter) --------------------------------------------------
 # The suite's screenshot checks ask an OpenRouter-hosted model whether a tool worked.
+# Any vision-capable OpenRouter model works here: the suite sends the screenshots as
+# standard image_url content and reads back JSON, so nothing depends on one provider.
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 VISION_MODEL = "deepseek/deepseek-v4.1-flash-1017"
 VISION_TEMPERATURE = 0
 
-# Thinking level for the vision judge: "minimal" | "low" | "medium" | "high" (OpenRouter maps
-# these to thinkingLevel; thinking tokens are billed as output). None = omit the field
-# and use whatever the provider defaults to.
+# Reasoning effort for the vision judge: "minimal" | "low" | "medium" | "high". Sent as
+# OpenRouter's generic "reasoning.effort" field; providers that don't support it ignore it.
+# Thinking tokens are billed as output. None = omit the field and use the provider default.
 VISION_REASONING_EFFORT = "low"
 
 # --- Timing ---------------------------------------------------------------------------

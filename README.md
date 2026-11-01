@@ -38,6 +38,14 @@ python check_auth.py
 
 A green `OPEN_ROUTER_API_KEY: present ... Ready to run` means you're set.
 
+To check the whole environment at once (dependencies, LIMA install, display, audio output and auth, ~5 seconds):
+
+```bash
+python preflight.py
+```
+
+`run_regression_tests.bat` runs this automatically before the tests and stops if anything is wrong, so a misconfigured machine fails in seconds rather than an hour into a run.
+
 > **Note:** For option 1, this only confirms a key is set, not that OpenRouter accepts it. For option 2, your LIMA account must be provisioned on the auth server for it to return keys.
 
 > **Important:** Never commit `secret_config.py` — it is excluded via `.gitignore`.
@@ -70,6 +78,8 @@ Test results are saved to `regression_tests/test_results.json` and include:
 - Error messages for failed tests
 - Crash log information (if any)
 
+When a test fails its screenshot check, the before/after images that verdict was based on are saved under `reports/artifacts/` (gitignored) and the folder is named in the failure message, so the failure can be reviewed afterwards.
+
 ## Project Structure
 
 ```
@@ -82,6 +92,7 @@ lima-testing-suite/
 ├── run_regression_tests.bat    # Windows batch launcher
 ├── lima_auth.py                # Authentication for the suite
 ├── check_auth.py               # Quick auth-setup verification before a run
+├── preflight.py                # Environment readiness checks before a run
 ├── secret_config.py.example    # Example config: copy to secret_config.py, fill in one option
 └── regression_tests/
     ├── lima_process_manager.py     # LIMA application lifecycle management

@@ -30,6 +30,7 @@ build/
 *.sublime-*
 
 # Test outputs
+reports/
 test_results.json
 regression_tests/test_results.json
 regression_tests/*test_results*.json
