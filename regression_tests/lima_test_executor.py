@@ -180,9 +180,18 @@ class LimaTestExecutor:
         tests = self.reporter.test_results["tests"]
         total_tests = len(tests)
         failures = sum(1 for t in tests if t.get("status") == TEST_FAILED)
+        skipped = sum(1 for t in tests if t.get("status") == TEST_SKIPPED)
         self.print_summary()
         if passed:
-            self._msgbox("LIMA Tests Complete", f"All {total_tests} tests passed.")
+            # Skipped checks (e.g. models above the account's plan) aren't counted as
+            # passing tests, so report them separately rather than burying them.
+            ran = total_tests - skipped
+            detail = f"All {ran} tests passed"
+            if skipped:
+                detail += f" ({skipped} skipped)."
+            else:
+                detail += "."
+            self._msgbox("LIMA Tests Complete", detail)
         else:
             self._msgbox("LIMA Tests Complete", f"{failures} of {total_tests} tests failed.\n\nCheck test_results.json for details.", error=True)
         return passed

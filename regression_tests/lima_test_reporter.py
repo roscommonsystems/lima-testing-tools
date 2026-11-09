@@ -12,7 +12,7 @@ import pygetwindow as gw
 import psutil
 from datetime import datetime
 
-from lima_test_utils import TEST_PASSED, TEST_FAILED
+from lima_test_utils import TEST_PASSED, TEST_FAILED, TEST_SKIPPED
 
 
 class LimaTestReporter:
@@ -43,7 +43,7 @@ class LimaTestReporter:
         
         Args:
             test_name (str): Name of the test
-            status (str): TEST_PASSED or TEST_FAILED
+            status (str): TEST_PASSED, TEST_FAILED or TEST_SKIPPED
             message (str): Result message
         """
         test_result = {
@@ -53,7 +53,8 @@ class LimaTestReporter:
         }
         self.test_results["tests"].append(test_result)
         
-        # Update overall status if any test failed
+        # Update overall status if any test failed. A SKIPPED result is not a failure
+        # (e.g. a model the account's plan doesn't include), so it leaves the run green.
         if status == TEST_FAILED:
             self.test_results["overall_status"] = TEST_FAILED
     
@@ -80,8 +81,25 @@ class LimaTestReporter:
         self.test_results["crash_logs"]["contents"] = contents
     
     def finalize_results(self):
-        """Finalize test results and calculate execution time."""
+        """Finalize test results and calculate execution time.
+
+        Also records per-status counts in the JSON report, so a skipped check stays
+        visible to whoever reads the report without having to recount the tests.
+        """
         self.test_results["execution_time_seconds"] = round(time.time() - self.start_time, 3)
+        counts = self._status_counts()
+        self.test_results["summary"] = {
+            "total": len(self.test_results["tests"]),
+            "passed": counts[TEST_PASSED],
+            "failed": counts[TEST_FAILED],
+            "skipped": counts[TEST_SKIPPED],
+        }
+
+    def _status_counts(self):
+        """Count tests by status: {PASSED: n, FAILED: n, SKIPPED: n}."""
+        statuses = [test.get("status") for test in self.test_results["tests"]]
+        return {status: statuses.count(status)
+                for status in (TEST_PASSED, TEST_FAILED, TEST_SKIPPED)}
     
     def save_report(self, output_path="test_results.json"):
         """
@@ -99,9 +117,10 @@ class LimaTestReporter:
     
     def print_summary(self):
         """Print a summary of test results to console."""
-        # Calculate the number of tests that passed and failed
-        tests_passed_count = sum(1 for test in self.test_results["tests"] if test["status"] == TEST_PASSED)
-        tests_failed_count = sum(1 for test in self.test_results["tests"] if test["status"] == TEST_FAILED)
+        counts = self._status_counts()
+        tests_passed_count = counts[TEST_PASSED]
+        tests_failed_count = counts[TEST_FAILED]
+        tests_skipped_count = counts[TEST_SKIPPED]
         total_tests_count = len(self.test_results['tests'])
         
         print("\n" + "="*60)
@@ -112,11 +131,19 @@ class LimaTestReporter:
         print(f"\nTests Run: {total_tests_count}")
         print(f"Tests Passed: {tests_passed_count}")
         print(f"Tests Failed: {tests_failed_count}")
+        print(f"Tests Skipped: {tests_skipped_count}")
         
         for test in self.test_results["tests"]:
-            status_symbol = "OK" if test["status"] == TEST_PASSED else "X"
+            if test["status"] == TEST_PASSED:
+                status_symbol = "OK"
+            elif test["status"] == TEST_SKIPPED:
+                status_symbol = "-"
+            else:
+                status_symbol = "X"
             print(f"  [{status_symbol}] {test['name']}: {test['status']}")
-            if test["status"] == TEST_FAILED:
+            # Skipped checks are not failures, but their reason is what makes the
+            # report readable (e.g. which plan a model needs).
+            if test["status"] in (TEST_FAILED, TEST_SKIPPED):
                 print(f"      Message: {test['message']}")
         
         if self.test_results["crash_logs"]["detected"]:

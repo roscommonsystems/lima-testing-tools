@@ -5,13 +5,14 @@ the Settings dialog and that LIMA then responds using it. Part of the Regression
 Test Enhancement epic (model-coverage slice).
 """
 
+import re
 import time
 import pyautogui
 import uiautomation as uia
 
 from lima_test_utils import (
     take_screenshot, verify_tool_with_screenshots, minimize_all_other_windows,
-    type_into_lima, speak_tts, open_file_menu_item, TEST_PASSED, TEST_FAILED,
+    type_into_lima, speak_tts, open_file_menu_item, TEST_PASSED, TEST_FAILED, TEST_SKIPPED,
     save_failure_artifacts, with_artifact_note,
     SLEEP_A, SLEEP_B, SLEEP_C,
 )
@@ -26,6 +27,16 @@ from lima_test_utils import (
 # by UIA Name, so the discovery depends on the exact app-side accessible name.
 MODEL_COMBO_NAME = "AI Model Selection Dropdown"
 SAVE_BUTTON_NAME = "Save Settings Button"
+
+# A model above the account's plan is still listed, but LIMA (settings_dialog.py) swaps
+# its description for the plan gate: '— Pro plan only', '— Standard plan or higher',
+# '— Go plan or higher'. Selecting one would land on a neighbouring allowed model, so
+# these are reported SKIPPED rather than tested. Ungated rows end in a description.
+GATED_LABEL_RE = re.compile(r"—\s*[^—]+?\bplan\s+(?:only|or higher)\s*$", re.IGNORECASE)
+
+# How many Down presses the keyboard fallback may use when walking the dropdown. The
+# list is well under this; the cap only stops the walk running away if something is odd.
+MODEL_KEYBOARD_STEPS = 24
 
 
 def _find_settings_window(maxdepth=6):
@@ -93,35 +104,44 @@ def _model_key(label):
     return label.strip()
 
 
-def _read_model_options(settings_win):
-    """Expand the Base AI Model combo and return only its option labels.
+def _plan_restriction(label):
+    """Return the plan gate text from a dropdown label, or None if the account can use it.
 
-    The combo's dropdown is a ListControl in the UI tree, but a whole-tree scan for
-    ListItems also picks up unrelated items (taskbar, desktop icons, browser tabs,
-    LIMA's own chat log). So we anchor on the combo's current value and read only the
-    single ListControl that actually contains it.
+    LIMA lists every model but replaces a gated one's description with its plan gate, so
+    the label alone says whether this account can select it (see GATED_LABEL_RE).
     """
-    combo = settings_win.ComboBoxControl(Name=MODEL_COMBO_NAME)
-    if not combo.Exists(2):
-        return []
+    match = GATED_LABEL_RE.search(label or "")
+    return match.group(0).strip() if match else None
 
-    current = ""
+
+def _combo_value(combo):
+    """Read the combo's current value, or '' if UIA can't read it."""
     try:
-        current = combo.GetValuePattern().Value
+        return combo.GetValuePattern().Value or ""
     except Exception as err:
         print(err)
-    if not current:
-        print("  ! Could not read the model combo's current value; cannot anchor discovery")
-        return []
+        return ""
 
-    try:
-        combo.GetExpandCollapsePattern().Expand()
-    except Exception as err:
-        print(err)
-        combo.Click()
-    time.sleep(SLEEP_B)
 
-    labels = []
+def _value_is_model(value, key):
+    """True if the combo's value is the model ``key`` (matched on the model name, so a
+    near-miss like 'Opus 5.55' can't satisfy a check for 'Opus 5.5')."""
+    return bool(value) and _model_key(value) == key
+
+
+def _find_options_list(current, depth_limit=8):
+    """Find the ListControl holding the model combo's dropdown options.
+
+    The dropdown is a ListControl in the UI tree, but a whole-tree scan for ListItems
+    also picks up unrelated items (taskbar, desktop icons, browser tabs, LIMA's own chat
+    log). So we anchor on the combo's current value: the single ListControl that contains
+    it is the dropdown. If the saved model is itself plan-gated (e.g. the account was
+    downgraded, so its label isn't in the list), fall back to the list whose options start
+    with the same model name.
+    """
+    current = (current or "").strip()
+    current_key = _model_key(current) if current else ""
+    fallback = None
     root = uia.GetRootControl()
     stack = [(c, 0) for c in root.GetChildren()]
     while stack:
@@ -130,29 +150,105 @@ def _read_model_options(settings_win):
             if ctrl.ControlTypeName == "ListControl":
                 names = [c.Name for c in ctrl.GetChildren()
                          if c.ControlTypeName == "ListItemControl" and c.Name]
-                if current in names:
-                    labels = names
-                    break
+                if current and current in names:
+                    return ctrl
+                if fallback is None and current_key and any(
+                        _model_key(name) == current_key for name in names):
+                    fallback = ctrl
         except Exception as err:
             print(err)
-        if depth < 8:
+        if depth < depth_limit:
             try:
                 stack.extend((c, depth + 1) for c in ctrl.GetChildren())
             except Exception as err:
                 print(err)
+    return fallback
 
+
+def _expand_model_options(combo):
+    """Open the combo's dropdown and return the ListControl holding its options."""
+    current = _combo_value(combo)
+    if not current:
+        print("  ! Could not read the model combo's current value; cannot anchor the dropdown")
+    try:
+        combo.GetExpandCollapsePattern().Expand()
+    except Exception as err:
+        print(err)
+        combo.Click()
+    time.sleep(SLEEP_B)
+    options_list = _find_options_list(current)
+    if options_list is None:
+        print("  ! Could not find the model dropdown's option list")
+    return options_list
+
+
+def _collapse_model_options(combo):
+    """Close the dropdown if it is still open, so it can't swallow the next click."""
+    try:
+        expanded = combo.GetExpandCollapsePattern().ExpandCollapseState
+    except Exception as err:
+        print(err)
+        expanded = False
+    if not expanded:
+        return
     try:
         combo.GetExpandCollapsePattern().Collapse()
     except Exception as err:
         print(err)
         pyautogui.press('escape')
+    time.sleep(SLEEP_A)
+
+
+def _find_option_item(options_list, key):
+    """Return the dropdown's ListItemControl for ``key``, or None.
+
+    Matched on the model name (``_model_key``) rather than a substring, so 'Opus 5.5'
+    can't match 'Opus 5.55' and a chat-log line can't match anything.
+    """
+    if options_list is None:
+        return None
+    try:
+        items = options_list.GetChildren()
+    except Exception as err:
+        print(err)
+        return None
+    for ctrl in items:
+        try:
+            if (ctrl.ControlTypeName == "ListItemControl" and ctrl.Name
+                    and _model_key(ctrl.Name) == key):
+                return ctrl
+        except Exception as err:
+            print(err)
+    return None
+
+
+def _read_model_options(settings_win):
+    """Expand the Base AI Model combo and return only its option labels."""
+    combo = settings_win.ComboBoxControl(Name=MODEL_COMBO_NAME)
+    if not combo.Exists(2):
+        return []
+
+    labels = []
+    options_list = _expand_model_options(combo)
+    if options_list is not None:
+        try:
+            labels = [c.Name for c in options_list.GetChildren()
+                      if c.ControlTypeName == "ListItemControl" and c.Name]
+        except Exception as err:
+            print(err)
+    _collapse_model_options(combo)
     return labels
 
 
 def _discover_available_models(executor):
     """Launch LIMA, open Settings, and read the Base AI Model dropdown so the test
-    covers exactly the models the app currently offers. Returns a de-duplicated list
-    of short model keys, or [] if the dropdown couldn't be read."""
+    covers exactly the models the app currently offers.
+
+    Returns a de-duplicated list of ``{"key": short name, "label": full dropdown label}``
+    dicts, or [] if the dropdown couldn't be read. The full label is kept because it
+    carries LIMA's plan gate (e.g. '— Pro plan only'), which decides whether this
+    account can use the model at all.
+    """
     executor.process_manager.close()
     time.sleep(SLEEP_B)
     if not executor.process_manager.launch(
@@ -174,75 +270,71 @@ def _discover_available_models(executor):
     executor.process_manager.close()
     time.sleep(SLEEP_B)
 
-    keys = []
+    models = []
     for label in labels:
         key = _model_key(label)
-        if key and key not in keys:
-            keys.append(key)
-    return keys
+        if key and all(key != model["key"] for model in models):
+            models.append({"key": key, "label": label})
+    return models
+
+
+def _select_model_by_keyboard(combo, key, max_steps=MODEL_KEYBOARD_STEPS):
+    """Walk the focused, closed dropdown with the keyboard until its value is ``key``.
+
+    Proven on the test VM: with focus on the closed combo, Down moves the selection
+    (Qwen3.8 -> Kimi K2.6 -> V4.1 Flash -> Muse Glimmer). Home returns to the first row
+    so models above the current one are reachable too. Returns True if the value matched.
+    """
+    combo.SetFocus()
+    time.sleep(SLEEP_A)
+    pyautogui.press("home")
+    time.sleep(SLEEP_A)
+
+    for _ in range(max_steps):
+        if _value_is_model(_combo_value(combo), key):
+            return True
+        pyautogui.press("down")
+        time.sleep(SLEEP_A)
+    return _value_is_model(_combo_value(combo), key)
 
 
 def _select_model(settings_win, key):
-    """Select the model whose label contains ``key`` from the Base AI Model combo.
+    """Select the model named ``key`` from the Base AI Model combo, then verify it took.
 
-    Uses the UIA SelectionItem pattern (falling back to a raw Click) and VERIFIES
-    the combo value actually changed, retrying up to 3 times — a plain click can
-    silently miss and leave the previously-selected model in place.
+    LIMA's combo is a Qt widget: UIA's SelectionItemPattern.Select() sets the item's
+    IsSelected but never commits the value (it reads back the old model for every entry —
+    see the model_select_probe diagnostic), so the choice is committed with a real mouse
+    Click on the dropdown item. If clicking doesn't take either, the combo is driven with
+    the keyboard instead. The value is read back after every attempt and the whole thing
+    retried up to 3 times, because a click can silently miss.
     """
     combo = settings_win.ComboBoxControl(Name=MODEL_COMBO_NAME)
     if not combo.Exists(2):
         return None
 
-    value = None
-    for _ in range(3):
-        try:
-            combo.GetExpandCollapsePattern().Expand()
-        except Exception as err:
-            print(err)
-            combo.Click()
-        time.sleep(SLEEP_B)
-
-        target = None
-        root = uia.GetRootControl()
-        stack = [(c, 0) for c in root.GetChildren()]
-        while stack:
-            ctrl, depth = stack.pop()
+    value = ""
+    for attempt in range(1, 4):
+        options_list = _expand_model_options(combo)
+        target = _find_option_item(options_list, key)
+        if target is None:
+            print(f"  ! '{key}' not in the model dropdown (attempt {attempt}/3)")
+        else:
             try:
-                if ctrl.ControlTypeName == "ListItemControl" and ctrl.Name and key in ctrl.Name:
-                    target = ctrl
-                    break
-            except Exception as err:
-                print(err)
-            if depth < 8:
-                try:
-                    stack.extend((c, depth + 1) for c in ctrl.GetChildren())
-                except Exception as err:
-                    print(err)
-
-        if target is not None:
-            try:
-                target.GetSelectionItemPattern().Select()
-            except Exception as err:
-                print(err)
                 target.Click()
+            except Exception as err:
+                print(err)
             time.sleep(SLEEP_B)
+        # A dropdown left open would swallow the Save click later on.
+        _collapse_model_options(combo)
 
-        try:
-            value = combo.GetValuePattern().Value
-        except Exception as err:
-            print(err)
-            value = "<selected>"
-        if value and key in value:
+        value = _combo_value(combo)
+        if _value_is_model(value, key):
             return value
-
-        # Selection didn't take — close the dropdown and retry.
-        try:
-            combo.GetExpandCollapsePattern().Collapse()
-        except Exception:
-            pyautogui.press('escape')
         time.sleep(SLEEP_A)
 
-    return value
+    print("  ! Clicking the model didn't change it — trying the keyboard")
+    _select_model_by_keyboard(combo, key)
+    return _combo_value(combo)
 
 
 def run_all_model_tests(executor):
@@ -252,6 +344,7 @@ def run_all_model_tests(executor):
     launch LIMA, open Settings, pick the model, Save, relaunch LIMA so the new model
     loads, then send a question and confirm a response appears (vision check).
     "Works" = a response is produced; verifying WHICH model served it isn't practical.
+    Models the account's plan doesn't include are reported SKIPPED, never FAILED.
     """
     print("\n" + "=" * 60)
     print("TESTING ALL LIMA BASE AI MODELS")
@@ -259,15 +352,15 @@ def run_all_model_tests(executor):
 
     # Discover the models the app currently offers so coverage tracks the live dropdown
     # instead of a hardcoded list (robust to base-LLM additions/removals).
-    model_keys = _discover_available_models(executor)
-    if not model_keys:
+    models = _discover_available_models(executor)
+    if not models:
         executor.add_test_result("Model Discovery", TEST_FAILED,
                                  "Could not read the Base AI Model dropdown to discover models")
         print("  X Could not discover any models — skipping model tests")
         executor.process_manager.close()
         time.sleep(SLEEP_B)
         return
-    print(f"Discovered {len(model_keys)} model(s): {', '.join(model_keys)}")
+    print(f"Discovered {len(models)} model(s): {', '.join(m['key'] for m in models)}")
 
     # Each model test Saves a new base model into the installed config.json, so
     # remember the app's original choice and restore it when the sweep finishes
@@ -282,12 +375,25 @@ def run_all_model_tests(executor):
     except Exception as error:
         print(f"  ! Could not read original base model from config: {error}")
 
-    total = len(model_keys)
-    for i, key in enumerate(model_keys, start=1):
+    total = len(models)
+    for i, model in enumerate(models, start=1):
+        key, label = model["key"], model["label"]
         result_name = f"Model Test: {key}"
         print("\n" + "-" * 50)
         print(f"MODEL TEST {i}/{total}: {key}")
         print("-" * 50)
+
+        # LIMA lists models above the account's plan but marks them with the plan they
+        # need. Selecting one would silently land on a neighbouring allowed model, so
+        # report it as skipped (not failed) and move on without touching Settings.
+        restriction = _plan_restriction(label)
+        if restriction:
+            message = f"Not available on this account's plan: {label}"
+            executor.add_test_result(result_name, TEST_SKIPPED, message)
+            print(f"  - SKIPPED {key}: {message}")
+            speak_tts(f"Model test {i} of {total}: {key} skipped, not available on this plan")
+            continue
+
         speak_tts(f"Model test {i} of {total}: {key}")
 
         try:
@@ -313,7 +419,7 @@ def run_all_model_tests(executor):
 
             print(f"  Selecting model '{key}'...")
             value = _select_model(settings_win, key)
-            if not value or key not in value:
+            if not _value_is_model(value, key):
                 executor.add_test_result(result_name, TEST_FAILED,
                                          f"Could not select model '{key}' (combo reads {value!r})")
                 print(f"  X Could not select '{key}' (reads {value!r})")
