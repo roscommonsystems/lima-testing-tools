@@ -82,6 +82,21 @@ Each test's status is `PASSED`, `FAILED` or `SKIPPED`. A skipped check is one th
 
 When a test fails its screenshot check, the before/after images that verdict was based on are saved under `reports/artifacts/` (gitignored) and the folder is named in the failure message, so the failure can be reviewed afterwards.
 
+## Approval tests
+
+LIMA 2.x asks before every action that changes the screen — clicking, typing, opening a program or website, pressing keys — and can ask several times in one turn. During an ordinary run the suite answers Yes automatically (`lima_action_approver.py`), so the run needs no human input.
+
+The approval tests need the opposite: to see that popup and answer it deliberately. They therefore run inside `manual_approvals()`, which pauses both the background approver and the pre-typing approval in `type_into_lima`, and always restores them — including when a test fails. While it is paused nothing auto-approves a popup, so answer or close any open popup before typing into LIMA: an `n` typed while the popup is open would deny it.
+
+They live in `regression_tests/approval_tests/`, one file per scenario. `__init__.py` finds every `test_*` module in that package (sorted by module name) and runs each module's `run(executor)`. To add a test:
+
+1. Add one new file, e.g. `test_20_replacement_instruction.py`.
+2. Give it a `RESULT_NAME` and a `def run(executor)` that reports exactly one result with `executor.add_test_result(RESULT_NAME, TEST_PASSED|TEST_FAILED, message)`.
+3. Use the shared steps in `approval_tests/_common.py` (`ensure_lima_ready`, `close_apps`, `wait_for_app`, `send_instruction`, `cleanup`) and the popup helpers in `lima_action_approver.py` (`manual_approvals`, `wait_for_action_prompt`, `answer_action_prompt`, `wait_for_replacement_prompt`, `close_replacement_prompt`, `submit_replacement_instruction`).
+4. Number the file with the next free number (10, 20, 30, …): the number fixes the run order, and one file per test means separate changes never collide. Files starting with `_` (`_common.py`) are helpers and are not run.
+
+`run_all_approval_tests(executor)` runs the package and closes LIMA between tests, like the tool and model sweeps.
+
 ## Project Structure
 
 ```
@@ -104,7 +119,12 @@ lima-testing-suite/
     ├── lima_tool_tests.py          # AI tool test scenarios
     ├── lima_model_tests.py         # Base AI model-coverage sweep
     ├── lima_voice_tests.py         # TTS voice-coverage sweep
-    └── lima_settings_tests.py      # Settings hotkey-reconfigure regression guard
+    ├── lima_settings_tests.py      # Settings hotkey-reconfigure regression guard
+    ├── lima_action_approver.py     # Answers LIMA's approval popups (auto, or per-test)
+    └── approval_tests/             # Approval-loop tests: one test_*.py file per scenario
+        ├── __init__.py             # Discovery + run_all_approval_tests
+        ├── _common.py              # Shared steps (LIMA ready, apps, instruction, cleanup)
+        └── test_10_deny_stops_action.py  # Approval: No stops the action
 ```
 
 ## Security Notes
