@@ -34,9 +34,11 @@ from globals import (
     AI_RESPONSE_WAIT_SECONDS, AUDIO_MAX_DURATION_S,
 )
 
-# Test result constants
+# Test result constants. SKIPPED is for a check the environment can't run (e.g. a model
+# the signed-in account's plan doesn't include): it is reported, but never fails a run.
 TEST_PASSED = "PASSED"
 TEST_FAILED = "FAILED"
+TEST_SKIPPED = "SKIPPED"
 
 # Configure pyautogui
 pyautogui.FAILSAFE = False

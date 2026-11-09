@@ -78,6 +78,8 @@ Test results are saved to `regression_tests/test_results.json` and include:
 - Error messages for failed tests
 - Crash log information (if any)
 
+Each test's status is `PASSED`, `FAILED` or `SKIPPED`. A skipped check is one this machine or account can't run — for example an AI model above the signed-in account's plan, which LIMA still lists but labels with the plan it needs (`— Pro plan only`). Skips are reported with their reason and do not fail the run.
+
 When a test fails its screenshot check, the before/after images that verdict was based on are saved under `reports/artifacts/` (gitignored) and the folder is named in the failure message, so the failure can be reviewed afterwards.
 
 ## Project Structure
