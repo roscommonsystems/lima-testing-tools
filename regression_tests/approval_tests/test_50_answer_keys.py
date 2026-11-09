@@ -17,15 +17,22 @@ them.
 
 Each of the four inputs gets its own result line, so a failure says exactly which input
 stopped working instead of leaving one vague "answer keys" failure.
+
+Each input also gets its own LIMA launch, and so its own conversation (see _relaunch_lima).
+Sharing one conversation made this test depend on what the model remembered: on the first VM
+run the second "open Notepad" was answered with "Notepad is now open." and no action at all,
+because the earlier cases' requests were still in the history and the model had no way to know
+the test had closed Notepad. Nothing to answer meant nothing to test.
 """
 
+import os
 import time
 
-from lima_test_utils import TEST_PASSED, TEST_FAILED, find_lima_uia_window, find_lima_message_input
+from lima_test_utils import TEST_PASSED, TEST_FAILED, SLEEP_B
 from lima_action_approver import (
-    manual_approvals, wait_for_action_prompt, find_action_prompts, answer_action_prompt,
-    wait_for_replacement_prompt, close_replacement_prompt, get_answer_hotkeys,
-    VIA_KEY, VIA_HOTKEY,
+    manual_approvals, wait_for_action_prompt, find_action_prompts, find_replacement_prompt,
+    answer_action_prompt, wait_for_replacement_prompt, close_replacement_prompt,
+    get_answer_hotkeys, VIA_KEY, VIA_HOTKEY,
 )
 from approval_tests import _common
 
@@ -51,9 +58,17 @@ REPLACEMENT_PROMPT_TIMEOUT = 15.0
 # caught, so this has to cover a launched Notepad showing a process or a window.
 NO_START_WINDOW = 15.0
 
-# LIMA finishes a turn after the action runs or the replacement popup is closed (it speaks, then
-# clears its state). Sending the next instruction immediately can be ignored, which would fail a
-# later case for the previous case's reason, so each case pauses here first.
+# How long LIMA gets to finish the turn after the first prompt is answered. An approved action
+# does not end the turn: the result goes back to the model, which re-plans, and that can be a
+# whole further model round trip plus speech before the turn is over.
+TURN_END_TIMEOUT = 60.0
+
+# Polling interval while waiting for the turn to end. The popup check polls faster on its own.
+TURN_END_POLL = 0.5
+
+# Wait used when LIMA's install folder is unknown, so there is no conversation save to watch.
+# Short and best effort: the next case relaunches LIMA, so this only avoids cutting a sentence
+# off mid-word.
 TURN_SETTLE = 2.0
 
 
@@ -72,25 +87,6 @@ def _result_names(hotkeys):
         "approve_hotkey": f"Approval: {approve} approves",
         "deny_hotkey": f"Approval: {deny} denies",
     }
-
-
-def _clear_lima_input():
-    """
-    Empty LIMA's message box before typing the next instruction.
-
-    The dialog never takes focus, so a key pressed in the moment after the answer has been
-    taken lands in whatever does have focus — normally LIMA's own message box, which still
-    holds focus from the last instruction. Clearing it means such a stray letter can't prefix
-    the next instruction and fail a later case for the wrong reason. Best effort: the value is
-    only cleared when the input exposes a writable value pattern.
-    """
-    try:
-        window = find_lima_uia_window()
-        message_input = find_lima_message_input(window) if window else None
-        if message_input is not None:
-            message_input.GetValuePattern().SetValue("")
-    except Exception as error:
-        print(f"  ! Could not clear LIMA's message box ({error})")
 
 
 def _wait_for_action_prompt(timeout):
@@ -129,6 +125,144 @@ def _check_notepad_is_not_running():
     return None
 
 
+def _relaunch_lima(executor):
+    """
+    Close LIMA and start it again, so this case begins in a new, empty conversation.
+
+    Every launch starts a fresh conversation: lima.py _init_state_variables builds one with
+    conversation_store.new_conversation() and nothing is reloaded on startup (past
+    conversations are reopened from the Conversations menu). Relaunching is therefore the
+    same as Conversations > New Conversation (&New Conversation, or typing /new) for the
+    conversation history, and better than either for this test: it also drops a pending
+    action, a replacement popup, or a half-finished turn left by the previous case, so each
+    case starts from the same state instead of from whatever the last one left behind.
+
+    Closing rather than reusing also matches how lima_tool_tests.py isolates its tests.
+
+    Returns:
+        str: a failure message when a fresh LIMA did not come up, otherwise None.
+    """
+    process_manager = executor.process_manager
+    if not process_manager.exe_full_path:
+        return "LIMA's executable path is unknown, so a fresh LIMA could not be launched"
+
+    print("  Closing LIMA to start this case in a new conversation...")
+    process_manager.close()
+    # Let the old instance go before the next one starts: LIMA enforces a single instance with
+    # a QSharedMemory guard (lima.py), and a leftover would make the new launch report
+    # "LIMA Is Already Running" and exit without a window.
+    time.sleep(SLEEP_B)
+    if not _common.ensure_lima_ready(executor):
+        return ("A fresh LIMA did not start with its window ready, so this case could not run "
+                "in a new conversation")
+    return None
+
+
+def _conversations_directory(executor):
+    """
+    LIMA's saved-conversations folder, or None when it cannot be worked out.
+
+    conversation_store.py keeps each conversation in `data/conversations` relative to the
+    process's working directory, and lima_process_manager.launch() starts LIMA with its
+    install folder as that directory (it chdirs there before os.startfile), so the folder is
+    <install>/data/conversations. The same folder holds data/config.json, which
+    lima_action_approver already reads from the install path.
+    """
+    install_path = getattr(executor.process_manager, "install_path", None)
+    if not install_path:
+        return None
+    return os.path.join(install_path, "data", "conversations")
+
+
+def _conversation_snapshot(executor):
+    """
+    Map each saved conversation file to its size and modification time.
+
+    None means there is nothing to watch (LIMA's install folder is unknown). A missing folder
+    is an empty snapshot: the folder is created by the first save, so a file appearing later
+    still shows up as a change.
+    """
+    directory = _conversations_directory(executor)
+    if not directory:
+        return None
+    snapshot = {}
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return snapshot
+    for name in names:
+        if not name.endswith(".json"):
+            continue
+        try:
+            status = os.stat(os.path.join(directory, name))
+        except OSError:
+            continue
+        snapshot[name] = (status.st_size, status.st_mtime)
+    return snapshot
+
+
+def _wait_for_turn_end(executor, snapshot):
+    """
+    Wait until LIMA has finished the turn, denying any follow-up action it proposes.
+
+    Why this is needed: approving an action does not end LIMA's turn. The worker feeds the
+    tool result back to the model and re-plans (llm_tts_worker._run_step_through_actions), so
+    it can announce a second gated action and sit waiting for an answer — on the first VM run
+    a window_control followed the approved open_program. The test used to move on and clean up
+    at that point, so the next instruction landed mid-turn and LIMA's saved order of turns was
+    skewed by the overlap.
+
+    A follow-up prompt is denied with the No button, not with the input this test is about: the
+    result must say what that input did to the first prompt, and re-pressing Y/N or a hotkey
+    here would blur which prompt an answer belonged to. Its replacement popup is closed empty,
+    which is what ends the turn with the follow-up not run
+    (llm_tts_worker._run_step_through_actions: a denial with no replacement breaks the loop).
+    The follow-up never counts towards the case's result.
+
+    The end of the turn is read from LIMA's own save: the turn's messages go to
+    <install>/data/conversations when the turn ends (lima.py _handle_assistant_response ->
+    _save_active_conversation), so a conversation file that is new or changed since `snapshot`
+    means LIMA is done. Watching the transcript instead would be guessing, because the model
+    is silent for a while between the tool result and its next proposal.
+
+    Returns:
+        list: the descriptions of the follow-up prompts that were denied (empty is normal).
+    """
+    if snapshot is None:
+        print("  ! LIMA's install folder is unknown, so the end of its turn cannot be watched; "
+              "waiting briefly instead")
+        time.sleep(TURN_SETTLE)
+        return []
+
+    denied = []
+    deadline = time.time() + TURN_END_TIMEOUT
+    while time.time() < deadline:
+        prompt = wait_for_action_prompt(timeout=0.25)
+        if prompt is not None:
+            print(f"  LIMA proposed a follow-up {prompt.kind}: {prompt.description!r} — "
+                  f"denying it so the turn can end")
+            answer_action_prompt(prompt, approve=False)
+            replacement = wait_for_replacement_prompt(timeout=REPLACEMENT_PROMPT_TIMEOUT)
+            if replacement:
+                close_replacement_prompt(replacement)
+            denied.append(prompt.description)
+            continue
+        # A replacement popup with no prompt beside it (left from an earlier answer) also keeps
+        # the worker waiting, so close it empty too.
+        if find_replacement_prompt():
+            close_replacement_prompt()
+            continue
+        if _conversation_snapshot(executor) != snapshot:
+            print("  LIMA finished its turn")
+            return denied
+        time.sleep(TURN_END_POLL)
+
+    # Not a failure: the case's own checks have already passed or failed on their own evidence,
+    # and the next case relaunches LIMA, which cannot inherit this turn.
+    print(f"  ! LIMA did not finish its turn within {TURN_END_TIMEOUT:.0f}s; moving on")
+    return denied
+
+
 def _press_answer(prompt, approve, via, label):
     """
     Answer the popup with the key or hotkey under test.
@@ -157,8 +291,14 @@ def _run_case(executor, approve, via, label):
     if failure:
         return False, failure
 
-    time.sleep(TURN_SETTLE)
-    _clear_lima_input()
+    failure = _relaunch_lima(executor)
+    if failure:
+        return False, failure
+
+    # Taken before the instruction is sent, so any later change to a saved conversation is this
+    # case's turn ending (the previous case's LIMA is gone, and its save happened before this
+    # launch).
+    snapshot = _conversation_snapshot(executor)
     _common.send_instruction(INSTRUCTION)
 
     prompt, question = _wait_for_action_prompt(ACTION_PROMPT_TIMEOUT)
@@ -185,9 +325,17 @@ def _run_case(executor, approve, via, label):
             return False, (
                 f"LIMA accepted the {label} (the popup closed) but Notepad did not start "
                 f"within {NOTEPAD_START_TIMEOUT:.0f}s, so the approval did not run the action.")
+        # Notepad is closed only after the turn is over: while it is still running LIMA may
+        # propose to control its window, and closing the app underneath a pending action would
+        # turn a working approval into an unrelated failure.
+        denied = _wait_for_turn_end(executor, snapshot)
         _common.close_apps(NOTEPAD_PROCESSES, NOTEPAD_WINDOW_KEYWORDS)
-        return True, (f"{label} approved the action: LIMA asked to {prompt.description!r}, the "
-                      f"popup closed, and Notepad started.")
+        message = (f"{label} approved the action: LIMA asked to {prompt.description!r}, the "
+                   f"popup closed, and Notepad started.")
+        if denied:
+            message += (f" LIMA then proposed a follow-up action ({denied[0]!r}); it was denied "
+                        f"so the turn could end, and it is not counted in this result.")
+        return True, message
 
     replacement = wait_for_replacement_prompt(REPLACEMENT_PROMPT_TIMEOUT)
     if replacement is None:
@@ -207,6 +355,10 @@ def _run_case(executor, approve, via, label):
     if leftover:
         return False, (f"{len(leftover)} approval popup(s) are still open after the denial; "
                        f"the turn did not end")
+
+    # A denial with the replacement closed empty ends the turn, so this returns at once; it is
+    # here so both paths leave the same "turn is over" state behind.
+    _wait_for_turn_end(executor, snapshot)
 
     return True, (f"{label} denied the action: LIMA asked to {prompt.description!r}, the "
                   f"replacement popup opened and was closed empty, and Notepad did not start "
@@ -228,21 +380,25 @@ def run(executor):
     """
     Answer the approval popup four ways — Y, Ctrl+Alt+Y, N, Ctrl+Alt+N — one result each.
 
-    Keyboard focus is left in LIMA's message box and LIMA's input is cleared between cases,
-    because the dialog never takes focus: a stray Y or N would otherwise be typed into it.
+    Each case runs in a LIMA launched for it alone, so it starts in a new conversation with no
+    earlier instruction in the model's history, and its turn is over before the next case
+    begins. Keyboard focus is left in LIMA's fresh message box, so a stray Y or N from the
+    previous case cannot prefix the next instruction.
     """
     results = []
     with manual_approvals():
         try:
-            if not _common.ensure_lima_ready(executor):
+            # Same call (and so the same config file) answer_action_prompt(via='hotkey') uses,
+            # so a result name can never disagree with the keys actually pressed. Read before
+            # the first launch, which is also when LIMA is definitely installed.
+            hotkeys = get_answer_hotkeys()
+            names = _result_names(hotkeys)
+            if not executor.process_manager.exe_full_path:
+                # Every case launches its own LIMA, so without the path there is nothing to test.
                 results.append((RESULT_NAME, False,
-                                "LIMA was not running with its window ready, so the test "
-                                "could not run"))
+                                "LIMA's executable path is unknown, so it could not be "
+                                "launched for a fresh conversation per case"))
             else:
-                # Same call (and so the same config file) answer_action_prompt(via='hotkey')
-                # uses, so a result name can never disagree with the keys actually pressed.
-                hotkeys = get_answer_hotkeys()
-                names = _result_names(hotkeys)
                 cases = [
                     (names["y"], True, VIA_KEY, "Y key"),
                     (names["approve_hotkey"], True, VIA_HOTKEY,
