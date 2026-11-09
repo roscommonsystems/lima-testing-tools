@@ -16,7 +16,8 @@ from lima_tool_tests import run_all_tool_tests
 from lima_voice_tests import run_all_voice_tests
 from lima_settings_tests import run_settings_hotkey_reconfigure_test
 from lima_model_tests import run_all_model_tests
-from lima_action_approver import ActionApprover
+from lima_action_approver import ActionApprover, set_action_approver
+from approval_tests import run_all_approval_tests
 
 
 class LimaTestExecutor:
@@ -27,6 +28,8 @@ class LimaTestExecutor:
         self.reporter = LimaTestReporter()
         self.process_manager = LimaProcessManager()
         self.action_approver = ActionApprover()
+        # Register it so manual_approvals() (approval tests) can pause and restart it.
+        set_action_approver(self.action_approver)
     
     # ========================================
     # Property Delegates to Reporter
@@ -157,6 +160,15 @@ class LimaTestExecutor:
 
             # Run all model-coverage tests (launches/closes its own LIMA session)
             self._test_all_models()
+
+            close_error = self.process_manager.close()
+            if close_error:
+                self.add_error(close_error)
+            time.sleep(SLEEP_C)
+
+            # Run the approval-loop tests (pause auto-approval and answer LIMA's popups
+            # deliberately; launches/closes its own LIMA session per test)
+            self._test_all_approvals()
 
             close_error = self.process_manager.close()
             if close_error:
@@ -418,6 +430,10 @@ class LimaTestExecutor:
     def _test_all_models(self):
         """Test: Verify each selectable Base AI Model can be set and that LIMA responds."""
         run_all_model_tests(self)
+
+    def _test_all_approvals(self):
+        """Test: LIMA asks before gated actions and honours the answer (approval loop)."""
+        run_all_approval_tests(self)
 
     # ========================================
     # Delegate Methods to Reporter
