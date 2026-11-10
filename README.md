@@ -82,6 +82,22 @@ Each test's status is `PASSED`, `FAILED` or `SKIPPED`. A skipped check is one th
 
 When a test fails its screenshot check, the before/after images that verdict was based on are saved under `reports/artifacts/` (gitignored) and the folder is named in the failure message, so the failure can be reviewed afterwards.
 
+## Prod builds and test builds
+
+The suite runs against either kind of LIMA installer, and `test_results.json` records which one it tested in `build_type` (`prod` or `test`):
+
+- **Prod builds** (`vX.Y.Z.W`, `LIMA_Install.exe`, made by the `[PROD]` workflow) are what users get: windowed, no console.
+- **Test builds** (`Test-vX.Y.Z.W-runN`, `LIMA_Install_Test.exe`, made by the `[DEV]` workflow) sign in to the dev backend, title the main window `LIMA Desktop - Test Build`, keep a console window open behind LIMA with its debug log scrolling in it, and ship `debug.json`, which makes LIMA log every prompt, reply and tool call to `data\.lima_voice_sessions\<launch time>\` in its install folder.
+
+The suite tells them apart by `debug.json` in the install folder, or by the `LIMA_BUILD_TYPE` environment variable (`prod`/`test`) when it is set. On a test build:
+
+- **Console Window Absence Check** is skipped: the console is expected there. Prod builds still have to pass it.
+- The screenshot judge is told that the console belongs to LIMA and that text in its log is not evidence a tool worked (the log echoes what LIMA types).
+- The console is never picked as LIMA's window when the suite looks for it by title.
+- Each failure's artifact folder also gets `lima_log/`: the text logs of the LIMA launch under test, so you can see what LIMA actually asked the model and which tools it called.
+
+A dev sign-in only sees the dev backend's plans, so the same account can be on a different plan there (and see a different set of models) than on prod.
+
 ## Approval tests
 
 LIMA 2.x asks before every action that changes the screen — clicking, typing, opening a program or website, pressing keys — and can ask several times in one turn. During an ordinary run the suite answers Yes automatically (`lima_action_approver.py`), so the run needs no human input.
