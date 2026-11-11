@@ -25,6 +25,7 @@ class LimaTestReporter:
             "timestamp": datetime.now().isoformat(),
             "overall_status": TEST_PASSED,
             "execution_time_seconds": 0,
+            "build_type": None,  # "prod" or "test" (see lima_test_utils.get_build_type)
             "tests": [],
             "crash_logs": {
                 "detected": False,

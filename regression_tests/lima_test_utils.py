@@ -9,6 +9,7 @@ import json
 import time
 import base64
 import re
+import shutil
 import struct
 import ctypes
 import logging
@@ -55,6 +56,79 @@ _api_keys = {}
 ARTIFACTS_ROOT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reports", "artifacts")
 _RUN_STAMP = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+# Build types. LIMA ships two kinds of installer from the same code:
+# - prod builds (vX.Y.Z.W, [PROD] workflow): windowed, quiet, talk to the prod backend.
+# - test builds (Test-vX.Y.Z.W-runN, [DEV] workflow, LIMA_ENV="dev"): talk to the dev backend,
+#   title the main window "LIMA Desktop - Test Build", keep a console window open behind LIMA
+#   with its debug log scrolling in it, and ship debug.json, which makes LIMA write every
+#   prompt, reply and tool call to data\.lima_voice_sessions\<launch time>\ in the install folder.
+BUILD_PROD = "prod"
+BUILD_TEST = "test"
+# Console windows: classic conhost, and Windows Terminal (Windows 11's default terminal), which
+# hosts a test build's console under its own process. Its title is the path to LIMA's .exe, so
+# it matches a "LIMA" title search, but it is never LIMA's GUI.
+CONSOLE_WINDOW_CLASSES = ("ConsoleWindowClass", "CASCADIA_HOSTING_WINDOW_CLASS")
+# Told to the screenshot judge on test builds. The console logs what LIMA types and does, so
+# without this the judge can read "hello" in the log and pass a Type Text test whose text
+# never reached the target field.
+TEST_BUILD_JUDGE_NOTE = (
+    "This is a LIMA test build. A terminal window whose title is the path to LIMA's .exe sits "
+    "behind LIMA, showing LIMA's own debug log scrolling. It is expected and belongs to LIMA. "
+    "Ignore that window and every line of text in it: text in the log is NOT evidence that the "
+    "tool worked, and a change in the log alone is not a change on screen."
+)
+_build_type = None
+
+
+def get_build_type(install_path=None):
+    """
+    Return BUILD_TEST or BUILD_PROD for the installed LIMA (cached after the first call).
+
+    LIMA_BUILD_TYPE ("prod"/"test") wins when set; the test VM sets it from the bucket the
+    installer came from. Otherwise a debug.json in the install folder means a test build: the
+    [DEV] workflow puts it there and the [PROD] workflow refuses to build with one, and the
+    installer deletes any left over. The console subsystem is deliberately not used to decide,
+    so a prod build accidentally shipped with a console still fails its console check.
+    """
+    global _build_type
+    if _build_type is None:
+        env = os.environ.get("LIMA_BUILD_TYPE", "").strip().lower()
+        if env in (BUILD_PROD, BUILD_TEST):
+            _build_type = env
+        else:
+            if install_path is None:
+                exe = find_lima_executable()
+                install_path = os.path.dirname(exe) if exe else None
+            has_debug = bool(install_path) and os.path.isfile(os.path.join(install_path, "debug.json"))
+            _build_type = BUILD_TEST if has_debug else BUILD_PROD
+    return _build_type
+
+
+def is_test_build():
+    """True when the installed LIMA is a test build (see get_build_type)."""
+    return get_build_type() == BUILD_TEST
+
+
+def latest_lima_session_folder(install_path=None):
+    """
+    Return the newest data/.lima_voice_sessions/<launch time> folder of the installed LIMA, or None.
+
+    Only test builds write these (debug.json). Each LIMA launch gets its own folder named by
+    its start time, so the newest one belongs to the LIMA instance the current test launched.
+    """
+    if install_path is None:
+        exe = find_lima_executable()
+        install_path = os.path.dirname(exe) if exe else None
+    if not install_path:
+        return None
+    root = os.path.join(install_path, "data", ".lima_voice_sessions")
+    try:
+        folders = [os.path.join(root, name) for name in os.listdir(root)
+                   if os.path.isdir(os.path.join(root, name))]
+    except OSError:
+        return None
+    return max(folders, key=os.path.getmtime) if folders else None
 
 
 def measure_peak_audio(max_duration_s=AUDIO_MAX_DURATION_S, poll_hz=20, exclude_pids=None,
@@ -486,6 +560,10 @@ def find_windows_by_title(keyword, pid=None):
             continue
         if pid is not None and get_window_pid(hwnd) != pid:
             continue
+        # A test build's console is titled with LIMA's .exe path; focusing (and maximizing)
+        # it instead of LIMA would send every keystroke to the console.
+        if get_window_class_name(hwnd) in CONSOLE_WINDOW_CLASSES:
+            continue
         matches.append((hwnd, title))
     return matches
 
@@ -658,6 +736,10 @@ def save_failure_artifacts(test_name, before_screenshot=None, after_screenshot=N
     afterwards. Written under reports/artifacts/<run stamp>/<test name>/, which is
     gitignored.
 
+    On a test build, the text logs of the LIMA launch under test (its prompts, replies and
+    tool calls, written because test builds ship debug.json) are copied in as well, into
+    lima_log/, so the failure can be diagnosed from what LIMA actually did.
+
     Args:
         test_name (str): Name of the test; used as the folder name.
         before_screenshot: PIL.Image captured before the action, or None.
@@ -692,7 +774,39 @@ def save_failure_artifacts(test_name, before_screenshot=None, after_screenshot=N
         return None
 
     print(f"  Saved failure screenshots ({', '.join(saved)}) to: {folder}")
+    if is_test_build():
+        copy_lima_session_log(folder)
     return folder
+
+
+def copy_lima_session_log(folder):
+    """
+    Copy the text logs of the newest LIMA launch (test builds only) into <folder>/lima_log/.
+
+    Only text files (llm_prompts_*.md, transcripts) are copied: the annotated screenshots in
+    the same session folder are large and the failure already has its own screenshots.
+
+    Returns:
+        str: The lima_log folder, or None when there was nothing to copy.
+    """
+    session = latest_lima_session_folder()
+    if not session:
+        print("  ! Test build, but no LIMA session log found to attach")
+        return None
+    names = [name for name in os.listdir(session)
+             if name.lower().endswith((".md", ".txt", ".json")) and os.path.isfile(os.path.join(session, name))]
+    if not names:
+        return None
+    dest = os.path.join(folder, "lima_log")
+    try:
+        os.makedirs(dest, exist_ok=True)
+        for name in names:
+            shutil.copy2(os.path.join(session, name), os.path.join(dest, name))
+    except OSError as error:
+        print(f"  ! Could not copy LIMA's session log: {error}")
+        return None
+    print(f"  Attached LIMA's session log ({', '.join(names)}) from {session}")
+    return dest
 
 
 def with_artifact_note(message, folder):
@@ -950,7 +1064,7 @@ def verify_tool_with_screenshots(before_screenshot, after_screenshot, tool_name,
         - "answer": Either "YES" or "NO" (YES = tool worked correctly, NO = tool did not work)
 
         The tool that was executed: {tool_name}
-
+        {TEST_BUILD_JUDGE_NOTE if is_test_build() else ""}
         IMPORTANT: Your response must be ONLY valid JSON, no other text.
         Example response format:
         {{"explanation": "The text input field now contains the typed text 'Test keyboard input'", "answer": "YES"}}"""

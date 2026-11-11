@@ -106,6 +106,13 @@ class LimaTestExecutor:
                 self._msgbox("LIMA Tests Aborted", "LIMA executable not found.\n\nCheck that LIMA Screen Reader is installed.", error=True)
                 return False
 
+            # Which kind of build this is decides what some checks expect (console, logs).
+            build_type = get_build_type(self.process_manager.install_path)
+            self.reporter.test_results["build_type"] = build_type
+            print(f"  Build type: {build_type}" + (
+                " (LIMA_ENV=dev: console window behind LIMA, debug logs attached to failures)"
+                if build_type == BUILD_TEST else ""))
+
             # Test 1b: Verify production build is windowed (no console window)
             self._test_no_console_window()
 
@@ -243,7 +250,15 @@ class LimaTestExecutor:
         window to appear whenever LIMA launches — a visible defect for end
         users. This is a static check on the shipped .exe (its PE subsystem),
         so it requires no launch and cannot flake.
+
+        Test builds keep their console on purpose (it shows LIMA's debug log), so
+        the check is skipped for them rather than failed.
         """
+        if get_build_type(self.process_manager.install_path) == BUILD_TEST:
+            message = ("Test build: its console window is expected (it shows LIMA's debug log). "
+                       "Only prod builds must be windowed.")
+            self.add_test_result("Console Window Absence Check", TEST_SKIPPED, message)
+            return
         try:
             exe_path = self.process_manager.exe_full_path
             if not exe_path:
