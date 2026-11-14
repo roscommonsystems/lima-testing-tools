@@ -18,6 +18,7 @@ from lima_settings_tests import run_settings_hotkey_reconfigure_test
 from lima_model_tests import run_all_model_tests
 from lima_action_approver import ActionApprover, set_action_approver
 from approval_tests import run_all_approval_tests
+from feature_tests import run_all_feature_tests
 
 
 class LimaTestExecutor:
@@ -176,6 +177,16 @@ class LimaTestExecutor:
             # Run the approval-loop tests (pause auto-approval and answer LIMA's popups
             # deliberately; launches/closes its own LIMA session per test)
             self._test_all_approvals()
+
+            close_error = self.process_manager.close()
+            if close_error:
+                self.add_error(close_error)
+            time.sleep(SLEEP_C)
+
+            # Run the feature tests (windows, files, typing, screenshots, memories, /new,
+            # Settings/Subscription details); each judges the outcome directly and runs in
+            # its own fresh LIMA session
+            self._test_all_features()
 
             close_error = self.process_manager.close()
             if close_error:
@@ -449,6 +460,10 @@ class LimaTestExecutor:
     def _test_all_approvals(self):
         """Test: LIMA asks before gated actions and honours the answer (approval loop)."""
         run_all_approval_tests(self)
+
+    def _test_all_features(self):
+        """Test: LIMA 2.x features, judged from app state, files and the saved conversation."""
+        run_all_feature_tests(self)
 
     # ========================================
     # Delegate Methods to Reporter
