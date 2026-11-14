@@ -85,7 +85,7 @@ def run(executor):
         # The model may have opened the file in Notepad to read it by eye; close that before
         # deleting the file.
         try:
-            _common.close_apps(_common.NOTEPAD_PROCESSES, _common.NOTEPAD_WINDOW_KEYWORDS)
+            _common.close_notepads()
         except Exception as error:
             print(f"  ! Could not close Notepad during cleanup: {error}")
         for path in created:

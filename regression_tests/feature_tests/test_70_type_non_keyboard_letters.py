@@ -97,7 +97,7 @@ def run(executor):
             except Exception as error:
                 print(f"  ! Could not clear Notepad during cleanup: {error}")
         try:
-            _common.close_apps(_common.NOTEPAD_PROCESSES, _common.NOTEPAD_WINDOW_KEYWORDS)
+            _common.close_notepads()
         except Exception as error:
             print(f"  ! Could not close Notepad during cleanup: {error}")
 

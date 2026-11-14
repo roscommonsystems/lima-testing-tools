@@ -22,6 +22,7 @@ import re
 import subprocess
 import time
 
+import pyautogui
 import uiautomation as auto
 
 from lima_test_utils import (
@@ -116,35 +117,40 @@ def notepad_windows():
     return windows_of_class(NOTEPAD_WINDOW_CLASS)
 
 
-def open_notepad(file_path=None, timeout=20.0):
+def open_notepad(file_path=None, timeout=45.0, attempts=2):
     """
     Start Notepad (optionally on a file) and wait for its window.
 
-    Closes any running Notepad first, so the window found is the one this call started and
-    a test never acts on a window left over from an earlier test.
+    Closes any running Notepad first (close_notepads), so the window found is the one this
+    call started and a test never acts on a window left over from an earlier test. The first
+    start after Windows boots can be slow, so a launch that shows no window in time is retried
+    once before giving up.
 
     Returns:
-        int: the Notepad window handle, or 0 when no window appeared within timeout.
+        int: the Notepad window handle, or 0 when no window appeared.
     """
-    close_apps(NOTEPAD_PROCESSES, NOTEPAD_WINDOW_KEYWORDS)
-    args = ["notepad.exe"] + ([file_path] if file_path else [])
-    subprocess.Popen(args)
-    windows = wait_until(notepad_windows, timeout)
-    if not windows:
-        print("  ! Notepad's window did not appear")
-        return 0
-    hwnd, title = windows[0]
-    print(f"  Opened Notepad: {title!r}")
-    return hwnd
+    for attempt in range(1, attempts + 1):
+        close_notepads()
+        args = ["notepad.exe"] + ([file_path] if file_path else [])
+        subprocess.Popen(args)
+        windows = wait_until(notepad_windows, timeout)
+        if windows:
+            hwnd, title = windows[0]
+            print(f"  Opened Notepad: {title!r}")
+            return hwnd
+        print(f"  ! Notepad's window did not appear within {timeout:.0f}s (attempt {attempt})")
+    return 0
 
 
 def _notepad_text_control(hwnd):
-    """Notepad's text area: a Document control (Windows 11) or an Edit control (classic)."""
+    """Notepad's text area: a Document control (Windows 11, RichEditD2DPT) or an Edit control
+    (classic Notepad). The typed finders matter: a plain window.Control(...) match is a generic
+    Control without GetTextPattern/GetValuePattern."""
     window = auto.ControlFromHandle(hwnd)
     if window is None:
         return None
-    for control_type in (auto.ControlType.DocumentControl, auto.ControlType.EditControl):
-        control = window.Control(searchDepth=12, ControlType=control_type)
+    for find in (window.DocumentControl, window.EditControl):
+        control = find(searchDepth=12)
         if control.Exists(maxSearchSeconds=2):
             return control
     return None
@@ -175,21 +181,84 @@ def notepad_text(hwnd):
 
 def clear_notepad(hwnd):
     """
-    Empty a Notepad document so closing it leaves nothing to save or restore.
+    Empty the current Notepad document, e.g. text a test had LIMA type into an untitled tab.
 
-    Windows 11 Notepad restores unsaved tabs the next time it starts; clearing the text first
-    stops a test's typing from reappearing in a later test's Notepad.
+    Only use it on a document the test itself created: emptying a file's tab would change it.
     """
     control = _notepad_text_control(hwnd)
     if control is None:
         return
     try:
         control.GetValuePattern().SetValue("")
-        return
+    except Exception as error:
+        print(f"  ! Could not empty Notepad's document: {error}")
+
+
+def _cancel_save_prompt(hwnd, timeout=1.5):
+    """
+    If closing a tab made Notepad ask to save, answer Cancel and return True.
+
+    Never "Don't save": the tab may hold someone's unsaved notes. A tab that asks is left
+    open, and close_notepads ends the process instead, which Windows 11 Notepad restores
+    without loss.
+    """
+    # The usual case is that the tab closed and took the window with it while this searched;
+    # UIA then raises from the vanished tree, which just means "no prompt".
+    try:
+        window = auto.ControlFromHandle(hwnd)
+        if window is None:
+            return False
+        cancel = window.ButtonControl(searchDepth=15, Name="Cancel")
+        if not cancel.Exists(maxSearchSeconds=timeout):
+            return False
     except Exception:
-        pass
-    if activate_window(hwnd):
-        auto.SendKeys("{Ctrl}a{Delete}", waitTime=0.2)
+        return False
+    try:
+        cancel.GetInvokePattern().Invoke()
+    except Exception:
+        pyautogui.press("escape")
+    time.sleep(SLEEP_A)
+    return True
+
+
+def close_notepad_window(hwnd, max_tabs=20):
+    """
+    Close a Notepad window one tab at a time (Ctrl+W), so it has nothing left to restore.
+
+    Windows 11 Notepad reopens the tabs of its last session, also after its process is ended.
+    A test that ends Notepad with its file still open leaves a tab for a file the test then
+    deletes, and the next Notepad opens with a "can't find the file" error that the next test
+    (and the model) trips over. Closing the tab itself is the only way to drop it from the
+    session. Stops at the first tab that asks to save (see _cancel_save_prompt).
+
+    Returns:
+        bool: True when the window is gone.
+    """
+    for _ in range(max_tabs):
+        if not is_open(hwnd):
+            return True
+        if not activate_window(hwnd):
+            break
+        pyautogui.hotkey("ctrl", "w")
+        if _cancel_save_prompt(hwnd):
+            print("  ! A Notepad tab has unsaved changes; leaving it for Notepad to restore")
+            break
+        wait_until(lambda: not is_open(hwnd), 2.0)
+    return not is_open(hwnd)
+
+
+def close_notepads():
+    """
+    Close every Notepad window tab by tab, then end whatever is still running.
+
+    Use this instead of close_apps for Notepad: see close_notepad_window for why.
+    """
+    for hwnd, _title in notepad_windows():
+        try:
+            close_notepad_window(hwnd)
+        except Exception as error:
+            print(f"  ! Could not close Notepad's tabs: {error}")
+    close_apps(NOTEPAD_PROCESSES, NOTEPAD_WINDOW_KEYWORDS)
 
 
 # --------------------------------------------------------------------------------------
@@ -290,15 +359,21 @@ def message_text(message):
     return content if isinstance(content, str) else ""
 
 
-def find_user_message(executor, user_text):
+def find_user_message(executor, user_text, since=0.0):
     """
     The newest saved conversation with a user message equal to user_text.
+
+    Args:
+        since: ignore conversation files last written before this time (time.time()). LIMA's
+            data folder keeps every earlier run's conversations, and most instructions are the
+            same every run, so without it an old run's file answers for this one.
 
     Returns:
         (path, conversation, index of that message) or (None, None, None).
     """
     wanted = user_text.strip().casefold()
-    files = sorted(list_conversation_files(executor).items(), key=lambda item: item[1], reverse=True)
+    files = sorted(((path, mtime) for path, mtime in list_conversation_files(executor).items()
+                    if mtime >= since), key=lambda item: item[1], reverse=True)
     for path, _mtime in files:
         conversation = load_conversation(path)
         if not conversation:
@@ -320,9 +395,19 @@ def _turn_finished(messages):
             and bool(message_text(last).strip()))
 
 
-def wait_for_turn_end(executor, user_text, timeout=TURN_TIMEOUT, quiet_seconds=20.0):
+# How far before wait_for_turn_end's call a conversation file may have been written and still
+# count as this turn's. LIMA saves at the end of a turn, which takes a model call, so the save
+# for an instruction sent just before the call is always later than this.
+SINCE_SLACK_SECONDS = 2.0
+
+
+def wait_for_turn_end(executor, user_text, timeout=TURN_TIMEOUT, quiet_seconds=20.0, since=None):
     """
     Wait until LIMA has finished answering user_text, judged from its saved conversation.
+
+    Call it straight after send_instruction(user_text). Only conversation files written after
+    that (since, default: the time of this call minus SINCE_SLACK_SECONDS) count, so a file an
+    earlier run saved for the same words can't end the wait before this turn has run.
 
     The turn has ended when the messages after user_text end in an assistant reply with no
     pending tool call and no approval popup is open. A turn that ends on an action with no
@@ -332,10 +417,12 @@ def wait_for_turn_end(executor, user_text, timeout=TURN_TIMEOUT, quiet_seconds=2
         (path, messages after user_text) once the turn has ended, or (path or None, messages
         so far) on timeout. The caller decides what a timeout means for its test.
     """
+    if since is None:
+        since = time.time() - SINCE_SLACK_SECONDS
     deadline = time.time() + timeout
     path, after, last_change, last_count = None, [], time.time(), -1
     while time.time() < deadline:
-        path, conversation, index = find_user_message(executor, user_text)
+        path, conversation, index = find_user_message(executor, user_text, since)
         if conversation is not None:
             after = (conversation.get("messages") or [])[index + 1:]
             if len(after) != last_count:

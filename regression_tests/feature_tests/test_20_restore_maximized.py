@@ -37,7 +37,7 @@ def _run_case(executor):
 
     hwnd = _common.open_notepad()
     if not hwnd:
-        return False, ("Setup: Notepad's window did not appear within 20s, so there was no window "
+        return False, ("Setup: Notepad's window did not appear, so there was no window "
                        "to maximize. This is not a LIMA failure.")
 
     # Maximize it and confirm it: if the window never maximized, "not maximized" at the end
@@ -86,9 +86,7 @@ def run(executor):
         passed, message = False, f"Exception during the test: {error}"
     finally:
         # Leave no Notepad behind for the next test, even when the scenario failed.
-        for hwnd, _title in _common.notepad_windows():
-            _common.clear_notepad(hwnd)
-        _common.close_apps(_common.NOTEPAD_PROCESSES, _common.NOTEPAD_WINDOW_KEYWORDS)
+        _common.close_notepads()
 
     executor.add_test_result(RESULT_NAME, TEST_PASSED if passed else TEST_FAILED, message)
     print(("  OK " if passed else "  X ") + message)

@@ -11,12 +11,11 @@ Because close acts on the active window and the user was just typing into LIMA, 
 to switch_to Notepad first; the instruction says so. Judging the handle rather than the reply
 also catches the failure the tool guards against, LIMA closing itself.
 
-Windows 11 Notepad can restore the previous session's tabs, and an unsaved document makes
-closing show a "Save changes?" prompt. LIMA's close only asks the window to close and then
-reports that it is still open, so a prompt would look like a failure. The test starts Notepad
-on a brand-new empty file (nothing to save, so no prompt), checks the document really is empty
-before sending the instruction, and clears any document it finds in Notepad in `finally`, so
-this test leaves nothing for a later run to restore.
+An unsaved document makes closing show a "Save changes?" prompt, and LIMA's close only asks
+the window to close and then reports that it is still open, so a prompt would look like a LIMA
+failure. open_notepad closes earlier Notepad tabs first, so the test checks the new window's
+document is empty before sending the instruction, and reports a setup problem (without touching
+the text, which may be someone's notes) when it isn't.
 """
 
 from lima_test_utils import TEST_PASSED, TEST_FAILED
@@ -49,34 +48,23 @@ def _document_is_empty(hwnd):
     return not text.strip()
 
 
-def _run_case(executor, file_path):
+def _run_case(executor):
     """Do the scenario; return (passed, message)."""
     if not _common.ensure_lima_ready(executor):
         return False, ("Setup: LIMA was not running with its window ready, so the test could not "
                        "run. This is not a LIMA failure.")
 
-    # An existing empty file gives Notepad a document with nothing to save, so closing it does
-    # not raise a "Save changes?" prompt.
-    try:
-        open(file_path, "w", encoding="utf-8").close()
-    except OSError as error:
-        return False, (f"Setup: could not create the empty document {file_path!r}: {error}. "
-                       f"This is not a LIMA failure.")
-
-    hwnd = _common.open_notepad(file_path)
+    hwnd = _common.open_notepad()
     if not hwnd:
-        return False, ("Setup: Notepad's window did not appear within 20s, so there was no window "
-                       "to close. This is not a LIMA failure.")
+        return False, ("Setup: Notepad's window did not appear, so there was no window to close. "
+                       "This is not a LIMA failure.")
 
-    # A restored tab from an earlier session would carry unsaved text and make the close prompt
-    # to save, which LIMA would then report as "still open". Empty it before the instruction.
+    # A restored tab with unsaved text would make the close prompt to save, which LIMA then
+    # reports as "still open". Don't empty it: it may be someone's notes.
     if not _document_is_empty(hwnd):
-        print("  ! Notepad restored a document with text; emptying it before the close")
-        _common.clear_notepad(hwnd)
-        if not _document_is_empty(hwnd):
-            return False, (f"Setup: Notepad (hwnd {hwnd}) still has text in it and could not be "
-                           f"emptied, so closing it may prompt to save and the outcome could not "
-                           f"be judged. This is not a LIMA failure.")
+        return False, (f"Setup: Notepad (hwnd {hwnd}) opened on a document that already holds "
+                       f"text (a tab restored from an earlier session), so closing it would ask "
+                       f"to save and the outcome could not be judged. This is not a LIMA failure.")
     print("  OK Notepad is open with an empty document")
 
     # send_instruction types into LIMA's chat box, so LIMA must be in front again.
@@ -115,18 +103,14 @@ def _run_case(executor, file_path):
 
 def run(executor):
     """Run the test and report exactly one result."""
-    file_path = _common.new_test_file_path()
     passed, message = False, "The test did not run"
     try:
-        passed, message = _run_case(executor, file_path)
+        passed, message = _run_case(executor)
     except Exception as error:
         passed, message = False, f"Exception during the test: {error}"
     finally:
-        # Leave no Notepad and no file behind for the next test, even when the scenario failed.
-        for hwnd, _title in _common.notepad_windows():
-            _common.clear_notepad(hwnd)
-        _common.close_apps(_common.NOTEPAD_PROCESSES, _common.NOTEPAD_WINDOW_KEYWORDS)
-        _common.remove_quietly(file_path)
+        # Leave no Notepad behind for the next test, even when the scenario failed.
+        _common.close_notepads()
 
     executor.add_test_result(RESULT_NAME, TEST_PASSED if passed else TEST_FAILED, message)
     print(("  OK " if passed else "  X ") + message)

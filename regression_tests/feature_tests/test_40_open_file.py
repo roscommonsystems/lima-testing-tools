@@ -64,7 +64,7 @@ def _run_case(executor, created):
     print(f"  Created {path}")
 
     # Any Notepad already open would make it impossible to tell whether LIMA opened ours.
-    _common.close_apps(_common.NOTEPAD_PROCESSES, _common.NOTEPAD_WINDOW_KEYWORDS)
+    _common.close_notepads()
     if not _common.wait_until(lambda: not _common.notepad_windows(), 10.0):
         return False, ("Notepad was still open after closing it, so a Notepad window would "
                        "not prove that LIMA opened the file")
@@ -106,7 +106,7 @@ def run(executor):
         # Close Notepad before deleting the file: a window on a deleted file would linger in
         # the next test's way.
         try:
-            _common.close_apps(_common.NOTEPAD_PROCESSES, _common.NOTEPAD_WINDOW_KEYWORDS)
+            _common.close_notepads()
         except Exception as error:
             print(f"  ! Could not close Notepad during cleanup: {error}")
         for path in created:
