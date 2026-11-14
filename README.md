@@ -113,6 +113,21 @@ They live in `regression_tests/approval_tests/`, one file per scenario. `__init_
 
 `run_all_approval_tests(executor)` runs the package and closes LIMA between tests, like the tool and model sweeps.
 
+## Feature tests
+
+`regression_tests/feature_tests/` covers LIMA 2.x features the tool sweep doesn't reach: switching to, restoring and closing another app's window, opening, reading and writing files, typing letters that aren't on the keyboard, screenshots, memories, `/new`, and the newer Settings and Subscription details.
+
+These tests check the outcome itself instead of asking the vision model about screenshots:
+
+- **Another app's window:** its state over Win32 (minimized, maximized, in front, closed).
+- **Typed text:** Notepad's own text area over UI Automation. Never LIMA's window, log or console: they echo what LIMA meant to type, not what landed.
+- **Files:** on disk.
+- **What LIMA did and said:** its saved conversation (`<install folder>\data\conversations\<id>.json`, written at the end of every turn with each tool call and its result).
+
+The background approver answers Yes to every action, as in the tool sweep. The package works like `approval_tests/`: one `test_*` file per feature, found by discovery, with a `RESULT_NAME` and a `run(executor)` that reports exactly one result. LIMA is closed after every test, so each starts with a fresh LIMA and a fresh conversation. Shared steps are in `feature_tests/_common.py`: `wait_for_turn_end`, `assistant_text`, `tool_calls`, `open_notepad`, `notepad_text`, `new_test_file_path`, plus the approval tests' `ensure_lima_ready` and `send_instruction`.
+
+Every file a feature test creates starts with `lima-feature-test-`, and the test deletes it again. Tests that change LIMA's own data (memories) back the file up first and put it back afterwards.
+
 ## Project Structure
 
 ```
@@ -141,6 +156,9 @@ lima-testing-suite/
         ├── __init__.py             # Discovery + run_all_approval_tests
         ├── _common.py              # Shared steps (LIMA ready, apps, instruction, cleanup)
         └── test_10_deny_stops_action.py  # Approval: No stops the action
+    └── feature_tests/              # LIMA 2.x feature tests: one test_*.py file per feature
+        ├── __init__.py             # Discovery + run_all_feature_tests
+        └── _common.py              # Shared checks (windows, Notepad, files, saved conversation)
 ```
 
 ## Security Notes
