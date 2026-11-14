@@ -103,7 +103,7 @@ class LimaTestExecutor:
             # Test 1: Find LIMA executable first
             if not self._test_lima_discovery():
                 self.reporter.finalize_results()
-                self._msgbox("LIMA Tests Aborted", "LIMA executable not found.\n\nCheck that LIMA Screen Reader is installed.", error=True)
+                self._msgbox("LIMA Tests Aborted", "LIMA executable not found.\n\nCheck that LIMA Desktop is installed.", error=True)
                 return False
 
             # Which kind of build this is decides what some checks expect (console, logs).

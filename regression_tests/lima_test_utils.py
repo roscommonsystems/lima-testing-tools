@@ -446,10 +446,14 @@ def find_lima_executable():
     # As of 1.9.0.5 LIMA ships a per-user installer that lands in %LOCALAPPDATA%
     # (no admin elevation), so prefer that; fall back to older Program Files
     # (all-users) installs for previous versions.
+    # After 2.1.0.7 the exe and install folder are renamed "LIMA Desktop" (LIMA #195), so the
+    # new folder comes first. The old folder stays in the list: an update run by a pre-rename
+    # updater keeps the install there.
     search_paths = []
     local_appdata = os.environ.get("LOCALAPPDATA")
     if local_appdata:
         search_paths += [
+            os.path.join(local_appdata, "LIMA Desktop"),
             os.path.join(local_appdata, "LIMA Screen Reader"),
             os.path.join(local_appdata, "Programs", "LIMA Screen Reader"),
             os.path.join(local_appdata, "LIMA"),
@@ -462,8 +466,10 @@ def find_lima_executable():
         r"C:\Program Files (x86)\LIMA",
     ]
 
-    # Check potential executable names (setup.nsi uses "LIMA Screen Reader.exe")
-    exe_names = ["LIMA Screen Reader.exe", "lima.exe"]
+    # Check potential executable names. setup.nsi builds "LIMA Desktop.exe" since the rename and
+    # "LIMA Screen Reader.exe" before it. A pre-rename updater also leaves a copy of the new exe
+    # under the old name in the old folder, so the new name wins wherever both exist.
+    exe_names = ["LIMA Desktop.exe", "LIMA Screen Reader.exe", "lima.exe"]
 
     for path in search_paths:
         for exe_name in exe_names:
