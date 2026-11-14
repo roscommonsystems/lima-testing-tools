@@ -24,6 +24,7 @@ reported in the message so a real clipboard regression is visible without turnin
 read into a false failure.
 """
 
+import ctypes
 import os
 import re
 import time
@@ -90,28 +91,17 @@ def _clipboard_has_image():
     """
     (True|False|None, note): whether the clipboard holds a DIB image, and what was seen.
 
-    None means it could not be read at all (pywin32 missing, or another app holding the
-    clipboard open), which is reported but not treated as a LIMA failure.
+    None means it could not be read at all, which is reported but not treated as a LIMA
+    failure. IsClipboardFormatAvailable needs no OpenClipboard, so another app holding the
+    clipboard open can't block it, and plain ctypes needs no pywin32 (not a suite dependency).
     """
+    CF_DIB = 8
     try:
-        import win32clipboard
-    except Exception as error:  # pywin32 absent on this machine
-        return None, f"clipboard not checked ({error})"
-    try:
-        win32clipboard.OpenClipboard()
-    except Exception as error:
-        return None, f"clipboard not checked, it could not be opened ({error})"
-    try:
-        if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_DIB):
+        if ctypes.windll.user32.IsClipboardFormatAvailable(CF_DIB):
             return True, "the clipboard holds an image"
         return False, "the clipboard holds no image"
     except Exception as error:
         return None, f"clipboard not checked ({error})"
-    finally:
-        try:
-            win32clipboard.CloseClipboard()
-        except Exception:
-            pass
 
 
 def _run_case(executor, state):

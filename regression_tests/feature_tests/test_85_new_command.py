@@ -19,9 +19,8 @@ message (the old conversation was saved, not lost); P2 contains no trace of the 
 (the fresh conversation did not inherit the old history); and no saved conversation has a user
 message of exactly ``/new``.
 
-The two conversations are deleted afterwards only when the test passed and only when they
-contain one of this test's code words, so a failure leaves its evidence behind for whoever reads
-the report and no unrelated chat is ever removed.
+Both conversations are left in place, like every other test's: they are the evidence the VM
+harness copies into the run's results.
 """
 
 import os
@@ -151,17 +150,6 @@ def run(executor):
         passed, message = _run_case(executor, (first_word, second_word), paths)
     except Exception as error:
         passed, message = False, f"Exception during the test: {error}"
-    finally:
-        # Only on a pass, and only a conversation this test wrote: the code word proves the file
-        # holds this run's messages. On a failure the files are the evidence, so they stay.
-        if passed:
-            for path in paths:
-                messages = _conversation_messages(path)
-                text = _all_message_text(messages)
-                if (_common.contains_code_word(text, first_word)
-                        or _common.contains_code_word(text, second_word)):
-                    _common.remove_quietly(path)
-                    print(f"  Deleted test conversation {os.path.basename(path)}")
 
     executor.add_test_result(RESULT_NAME, TEST_PASSED if passed else TEST_FAILED, message)
     print(("  OK " if passed else "  X ") + message)
