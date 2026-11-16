@@ -37,21 +37,36 @@ class LimaTestReporter:
             "stderr_output": ""
         }
         self.start_time = time.time()
-    
-    def add_test_result(self, test_name, status, message):
+        # The part of the suite now running ("tools", "approval", "features", ...). The executor
+        # sets it before each part, so every result is filed under an area without each test
+        # having to say so.
+        self.current_area = None
+
+    def add_test_result(self, test_name, status, message, area=None, duration_seconds=None,
+                        retried=False):
         """
         Add a test result to the report.
-        
+
         Args:
             test_name (str): Name of the test
             status (str): TEST_PASSED, TEST_FAILED or TEST_SKIPPED
             message (str): Result message
+            area (str): Part of the suite the test belongs to; defaults to current_area.
+            duration_seconds (float): How long the test took, all attempts included.
+            retried (bool): True when the test was run more than once (see RETRY_FAILED_TESTS).
         """
         test_result = {
             "name": test_name,
             "status": status,
             "message": message
         }
+        result_area = area or self.current_area
+        if result_area:
+            test_result["area"] = result_area
+        if duration_seconds is not None:
+            test_result["duration_seconds"] = round(duration_seconds, 1)
+        if retried:
+            test_result["retried"] = True
         self.test_results["tests"].append(test_result)
         
         # Update overall status if any test failed. A SKIPPED result is not a failure
@@ -94,6 +109,8 @@ class LimaTestReporter:
             "passed": counts[TEST_PASSED],
             "failed": counts[TEST_FAILED],
             "skipped": counts[TEST_SKIPPED],
+            "retried": self._retried_count(),
+            "areas": self._area_counts(),
         }
 
     def _status_counts(self):
@@ -101,6 +118,25 @@ class LimaTestReporter:
         statuses = [test.get("status") for test in self.test_results["tests"]]
         return {status: statuses.count(status)
                 for status in (TEST_PASSED, TEST_FAILED, TEST_SKIPPED)}
+
+    def _retried_count(self):
+        """How many tests were run more than once, whatever their final status."""
+        retried_tests = [test for test in self.test_results["tests"] if test.get("retried")]
+        retried_count = len(retried_tests)
+        return retried_count
+
+    def _area_counts(self):
+        """Counts by area, in first-seen order: {area: {passed: n, failed: n, skipped: n}}."""
+        status_keys = {TEST_PASSED: "passed", TEST_FAILED: "failed", TEST_SKIPPED: "skipped"}
+        areas = {}
+        for test in self.test_results["tests"]:
+            status_key = status_keys.get(test.get("status"))
+            if status_key is None:
+                continue
+            area_name = test.get("area") or "other"
+            area_counts = areas.setdefault(area_name, {"passed": 0, "failed": 0, "skipped": 0})
+            area_counts[status_key] += 1
+        return areas
     
     def save_report(self, output_path="test_results.json"):
         """
@@ -133,7 +169,16 @@ class LimaTestReporter:
         print(f"Tests Passed: {tests_passed_count}")
         print(f"Tests Failed: {tests_failed_count}")
         print(f"Tests Skipped: {tests_skipped_count}")
-        
+        print(f"Tests Run More Than Once: {self._retried_count()}")
+
+        area_counts = self._area_counts()
+        if len(area_counts) > 1:
+            print("\nBy area:")
+            for area_name, area_count in area_counts.items():
+                print(f"  {area_name}: {area_count['passed']} passed, {area_count['failed']} failed, "
+                      f"{area_count['skipped']} skipped")
+            print()
+
         for test in self.test_results["tests"]:
             if test["status"] == TEST_PASSED:
                 status_symbol = "OK"
@@ -141,10 +186,12 @@ class LimaTestReporter:
                 status_symbol = "-"
             else:
                 status_symbol = "X"
-            print(f"  [{status_symbol}] {test['name']}: {test['status']}")
+            retried_note = " (retried)" if test.get("retried") else ""
+            print(f"  [{status_symbol}] {test['name']}: {test['status']}{retried_note}")
             # Skipped checks are not failures, but their reason is what makes the
-            # report readable (e.g. which plan a model needs).
-            if test["status"] in (TEST_FAILED, TEST_SKIPPED):
+            # report readable (e.g. which plan a model needs). A retried pass keeps its
+            # first failure in the message, so show that too.
+            if test["status"] in (TEST_FAILED, TEST_SKIPPED) or test.get("retried"):
                 print(f"      Message: {test['message']}")
         
         if self.test_results["crash_logs"]["detected"]:

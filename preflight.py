@@ -222,6 +222,22 @@ def check_audio_output():
     return True, f"audio endpoint available ({session_count} session(s))"
 
 
+def check_practice_browser():
+    """
+    The mouse and keyboard tests act on a practice page opened in Microsoft Edge.
+
+    Advisory: only the tests that use the page need it, and each of them says so itself when
+    Edge is missing.
+    """
+    from lima_practice_page import find_edge
+
+    edge_path = find_edge()
+    if not edge_path:
+        return False, ("Microsoft Edge not found - tests that use the practice page "
+                       "(regression_tests/lima_practice_page.py) will fail")
+    return True, f"found {edge_path}"
+
+
 def check_auth():
     """
     Report whether the suite can already obtain an OpenRouter key right now.
@@ -255,11 +271,13 @@ def main():
         ("Display", check_display),
         ("Session", check_session_unlocked),
         ("Audio output", check_audio_output),
+        ("Practice page browser", check_practice_browser),
         ("Auth", check_auth),
     ]
     # Auth is informational: the suite accepts either a pasted OpenRouter key or the LIMA
     # sign-in, and auth is not what it tests, so a "not ready" auth never blocks a run.
-    advisory_labels = {"Auth"}
+    # The practice page's browser is informational too: the tests that need it report it.
+    advisory_labels = {"Auth", "Practice page browser"}
 
     print("LIMA Testing Suite - preflight checks")
     print("=" * 50)
@@ -267,7 +285,7 @@ def main():
     failures = 0
     advisory_problems = []
     for label, check in checks:
-        if label in advisory_labels and skip_auth:
+        if label == "Auth" and skip_auth:
             print(f"  [--] {label}: skipped (--no-auth)")
             continue
 
@@ -304,9 +322,11 @@ def main():
         return 1
 
     print("OK - this machine is ready for a full run (python main.py).")
-    if advisory_problems:
+    if "Auth" in advisory_problems:
         print("   Note: auth is not ready yet, which does not block a run - the suite stops at")
         print("   startup with the exact missing piece if it still cannot get a key.")
+    if "Practice page browser" in advisory_problems:
+        print("   Note: without Microsoft Edge the practice-page tests fail; the rest still run.")
     return 0
 
 

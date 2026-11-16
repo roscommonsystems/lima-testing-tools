@@ -23,10 +23,10 @@ fails the test, because the run would otherwise go on with a memory it should no
 
 import json
 import os
-import tempfile
 import time
 
 from lima_test_utils import TEST_PASSED, TEST_FAILED, SLEEP_A
+from lima_backup import FileBackup
 from feature_tests import _common
 
 RESULT_NAME = "Feature: Save a memory"
@@ -43,62 +43,6 @@ MEMORY_SAVE_TIMEOUT = 20.0
 def _memory_file_path(executor):
     """memories.json inside LIMA's install folder (LIMA runs with it as the working directory)."""
     return os.path.join(_common.lima_data_dir(executor), "memories.json")
-
-
-class MemoryFileBackup:
-    """The exact bytes of memories.json before the test, and how to put them back."""
-
-    def __init__(self, path):
-        self.path = path
-        self.existed = os.path.exists(path)
-        self.original = b""
-        if self.existed:
-            with open(path, "rb") as handle:
-                self.original = handle.read()
-            print(f"  Backed up memories.json ({len(self.original)} bytes)")
-        else:
-            print("  memories.json does not exist yet; cleanup will delete anything created")
-
-    def restore(self):
-        """
-        Put the file back exactly as it was.
-
-        Returns:
-            (True, None) when the file is back, or (False, reason).
-        """
-        try:
-            if not self.existed:
-                if os.path.exists(self.path):
-                    os.remove(self.path)
-                if os.path.exists(self.path):
-                    return False, f"{self.path} still exists after cleanup"
-                return True, None
-
-            folder = os.path.dirname(self.path)
-            os.makedirs(folder, exist_ok=True)
-            # Same-directory temporary file so os.replace stays atomic, and on Windows it must
-            # be closed before the replace.
-            with tempfile.NamedTemporaryFile(mode="wb", dir=folder,
-                                             prefix=".lima-feature-test-", suffix=".tmp",
-                                             delete=False) as handle:
-                temporary_path = handle.name
-                handle.write(self.original)
-                handle.flush()
-                os.fsync(handle.fileno())
-            try:
-                os.replace(temporary_path, self.path)
-            finally:
-                if os.path.exists(temporary_path):
-                    os.remove(temporary_path)
-
-            with open(self.path, "rb") as handle:
-                restored = handle.read()
-            if restored != self.original:
-                return False, (f"restored memories.json is {len(restored)} bytes, not the "
-                               f"original {len(self.original)}")
-            return True, None
-        except OSError as error:
-            return False, f"could not restore memories.json: {error}"
 
 
 def _memory_contents(path):
@@ -185,7 +129,7 @@ def run(executor):
                                       "could not run")
         else:
             # Snapshot after the launch: install_path (and so the data folder) is known only then.
-            backup = MemoryFileBackup(_memory_file_path(executor))
+            backup = FileBackup(_memory_file_path(executor))
             passed, message = _run_case(executor, backup)
     except Exception as error:
         passed, message = False, f"Exception during the test: {error}"

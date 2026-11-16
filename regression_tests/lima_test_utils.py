@@ -33,6 +33,7 @@ from globals import (
     SLEEP_A, SLEEP_B, SLEEP_C, SLEEP_D,
     OPENROUTER_BASE_URL, VISION_MODEL, VISION_TEMPERATURE, VISION_REASONING_EFFORT,
     AI_RESPONSE_WAIT_SECONDS, AUDIO_MAX_DURATION_S,
+    JUDGE_MODEL, JUDGE_TEMPERATURE, JUDGE_ATTEMPTS, RETRY_FAILED_TESTS, PRACTICE_PAGE_PORT,
 )
 
 # Test result constants. SKIPPED is for a check the environment can't run (e.g. a model
@@ -623,6 +624,11 @@ def get_window_rect(hwnd):
     return rect.left, rect.top, rect.right, rect.bottom
 
 
+# LIMA writes its crash log as data\crash_log.txt (lima.py). The suite used to look for
+# crash.log.txt, which LIMA has never written, so it is kept only as a second name to try.
+CRASH_LOG_NAMES = ("crash_log.txt", "crash.log.txt")
+
+
 def check_crash_logs(lima_install_path):
     """
     Check for crash logs in LIMA's data directory.
@@ -637,10 +643,15 @@ def check_crash_logs(lima_install_path):
         return {}
 
     crash_log_dir = os.path.join(lima_install_path, "data")
-    crash_log_path = os.path.join(crash_log_dir, "crash.log.txt")
+    crash_log_path = None
+    for crash_log_name in CRASH_LOG_NAMES:
+        candidate_path = os.path.join(crash_log_dir, crash_log_name)
+        if os.path.exists(candidate_path):
+            crash_log_path = candidate_path
+            break
 
     # Check if crash log exists and read its contents
-    if os.path.exists(crash_log_path):
+    if crash_log_path:
         try:
             with open(crash_log_path, 'r', encoding='utf-8', errors='ignore') as log_file:
                 contents = log_file.read()
@@ -736,6 +747,22 @@ def take_screenshot():
         return None
 
 
+def new_artifact_folder(test_name):
+    """
+    The path of a new, unused evidence folder for one test: reports/artifacts/<run stamp>/
+    <test name>/, with -2, -3, ... appended when the test already has one this run (a retry).
+    The folder is not created here.
+    """
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "_", test_name or "test").strip("_").lower() or "test"
+    base_folder = os.path.join(ARTIFACTS_ROOT, _RUN_STAMP, slug)
+    folder = base_folder
+    suffix = 2
+    while os.path.exists(folder):
+        folder = f"{base_folder}-{suffix}"
+        suffix += 1
+    return folder
+
+
 def save_failure_artifacts(test_name, before_screenshot=None, after_screenshot=None):
     """
     Save the screenshots behind a failed verdict so the failure can be reviewed
@@ -760,13 +787,7 @@ def save_failure_artifacts(test_name, before_screenshot=None, after_screenshot=N
         print("  ! No screenshots available to save for this failure")
         return None
 
-    slug = re.sub(r"[^A-Za-z0-9._-]+", "_", test_name or "test").strip("_").lower() or "test"
-    base_folder = os.path.join(ARTIFACTS_ROOT, _RUN_STAMP, slug)
-    folder = base_folder
-    suffix = 2
-    while os.path.exists(folder):
-        folder = f"{base_folder}-{suffix}"
-        suffix += 1
+    folder = new_artifact_folder(test_name)
 
     saved = []
     try:
@@ -1010,6 +1031,15 @@ def initialize_openrouter_api_key():
     except Exception as e:
         print(f"ERROR: Failed to initialize OpenRouter API key: {e}")
         return False
+
+
+def get_openrouter_api_key():
+    """The OpenRouter API key for the suite's own model calls, or None when there isn't one."""
+    initialize_openrouter_api_key()
+    api_key = _api_keys.get('OPEN_ROUTER_API_KEY')
+    if not api_key or not str(api_key).strip():
+        return None
+    return api_key
 
 
 def verify_tool_with_screenshots(before_screenshot, after_screenshot, tool_name, verification_prompt):

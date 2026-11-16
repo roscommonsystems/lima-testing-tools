@@ -4,6 +4,7 @@ Handles test execution, LIMA process lifecycle management, and test coordination
 """
 
 import ctypes
+import importlib
 import os
 import sys
 import time
@@ -17,8 +18,21 @@ from lima_voice_tests import run_all_voice_tests
 from lima_settings_tests import run_settings_hotkey_reconfigure_test
 from lima_model_tests import run_all_model_tests
 from lima_action_approver import ActionApprover, set_action_approver
-from approval_tests import run_all_approval_tests
-from feature_tests import run_all_feature_tests
+from lima_test_packages import run_test_package
+
+# The test packages, run in this order after the sweeps: (package folder, banner, area the
+# results are filed under in the report). Each is a folder of test_*.py modules found by
+# discovery (see lima_test_packages.py), so a new test is one new file there. A new package is
+# one new line here. To run only some packages while working on one, trim this list.
+TEST_PACKAGES = (
+    # Pause auto-approval and answer LIMA's popups deliberately.
+    ("approval_tests", "TESTING LIMA'S ACTION APPROVAL LOOP", "approval"),
+    # Windows, files, typing, screenshots, memories, /new, Settings/Subscription details;
+    # each judges the outcome directly.
+    ("feature_tests", "TESTING LIMA FEATURES", "features"),
+    # Mouse and keyboard tools, checked from the events the practice page records.
+    ("ai_tool_tests", "TESTING LIMA'S AI TOOLS ON THE PRACTICE PAGE", "ai_tools"),
+)
 
 
 class LimaTestExecutor:
@@ -41,9 +55,9 @@ class LimaTestExecutor:
         """Get test results from reporter."""
         return self.reporter.test_results
     
-    def add_test_result(self, test_name, status, message):
-        """Add a test result via reporter."""
-        self.reporter.add_test_result(test_name, status, message)
+    def add_test_result(self, test_name, status, message, **details):
+        """Add a test result via reporter. details: area, duration_seconds, retried."""
+        self.reporter.add_test_result(test_name, status, message, **details)
     
     def add_error(self, error_message):
         """Add an error via reporter."""
@@ -76,6 +90,7 @@ class LimaTestExecutor:
         # LIMA 2.0 asks "Approve this action?" before screen-changing actions, at
         # unpredictable times; approve every one so the run needs no human input.
         self.action_approver.start()
+        self.reporter.current_area = "startup"
         try:
             # Minimize all other windows first for clean environment
             minimize_all_other_windows()
@@ -141,6 +156,7 @@ class LimaTestExecutor:
             # Run all tool tests — each test relaunches LIMA independently for isolation.
             # Note: test filtering/selection is not supported by design — this is a full
             # regression suite intended to run every test on every execution.
+            self.reporter.current_area = "tools"
             self._test_all_tools()
 
             # Close LIMA after all tool tests
@@ -150,6 +166,7 @@ class LimaTestExecutor:
             time.sleep(SLEEP_C)
 
             # Run all voice-coverage tests (launches/closes its own LIMA session)
+            self.reporter.current_area = "voices"
             self._test_all_voices()
 
             close_error = self.process_manager.close()
@@ -159,6 +176,7 @@ class LimaTestExecutor:
 
             # Run the settings hotkey-reconfigure regression test (launches/closes
             # its own LIMA session and restores config.json afterwards)
+            self.reporter.current_area = "settings"
             self._test_settings_hotkey_reconfigure()
 
             close_error = self.process_manager.close()
@@ -167,6 +185,7 @@ class LimaTestExecutor:
             time.sleep(SLEEP_C)
 
             # Run all model-coverage tests (launches/closes its own LIMA session)
+            self.reporter.current_area = "models"
             self._test_all_models()
 
             close_error = self.process_manager.close()
@@ -174,26 +193,12 @@ class LimaTestExecutor:
                 self.add_error(close_error)
             time.sleep(SLEEP_C)
 
-            # Run the approval-loop tests (pause auto-approval and answer LIMA's popups
-            # deliberately; launches/closes its own LIMA session per test)
-            self._test_all_approvals()
-
-            close_error = self.process_manager.close()
-            if close_error:
-                self.add_error(close_error)
-            time.sleep(SLEEP_C)
-
-            # Run the feature tests (windows, files, typing, screenshots, memories, /new,
-            # Settings/Subscription details); each judges the outcome directly and runs in
-            # its own fresh LIMA session
-            self._test_all_features()
-
-            close_error = self.process_manager.close()
-            if close_error:
-                self.add_error(close_error)
-            time.sleep(SLEEP_C)
+            # Run the test packages (TEST_PACKAGES at the top of this file); every test in
+            # them runs in its own fresh LIMA session
+            self._test_all_packages()
 
             # Test 8: Check for crash logs after run
+            self.reporter.current_area = "startup"
             self._test_postrun_crash_logs()
 
             
@@ -457,13 +462,23 @@ class LimaTestExecutor:
         """Test: Verify each selectable Base AI Model can be set and that LIMA responds."""
         run_all_model_tests(self)
 
-    def _test_all_approvals(self):
-        """Test: LIMA asks before gated actions and honours the answer (approval loop)."""
-        run_all_approval_tests(self)
+    def _test_all_packages(self):
+        """Run every package in TEST_PACKAGES, closing LIMA after each."""
+        for package_name, title, area in TEST_PACKAGES:
+            self.reporter.current_area = area
+            try:
+                package = importlib.import_module(package_name)
+            except Exception as error:
+                message = f"Could not import the test package {package_name}/: {error}"
+                self.add_test_result(package_name, TEST_FAILED, message)
+                print(f"  X {message}")
+                continue
+            run_test_package(self, package, title, area)
 
-    def _test_all_features(self):
-        """Test: LIMA 2.x features, judged from app state, files and the saved conversation."""
-        run_all_feature_tests(self)
+            close_error = self.process_manager.close()
+            if close_error:
+                self.add_error(close_error)
+            time.sleep(SLEEP_C)
 
     # ========================================
     # Delegate Methods to Reporter

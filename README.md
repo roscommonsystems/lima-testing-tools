@@ -82,6 +82,16 @@ Each test's status is `PASSED`, `FAILED` or `SKIPPED`. A skipped check is one th
 
 When a test fails its screenshot check, the before/after images that verdict was based on are saved under `reports/artifacts/` (gitignored) and the folder is named in the failure message, so the failure can be reviewed afterwards.
 
+Each result also records its `area` (the part of the suite it belongs to: `startup`, `tools`, `voices`, `settings`, `models`, `approval`, `features`, `ai_tools`), and tests in the test packages record `duration_seconds`. The report's `summary` counts results per area.
+
+### Retried tests
+
+Most tests depend on what LIMA's AI model decides to do, which varies from run to run. A test in a test package that fails is run once more in a fresh LIMA. If the second attempt passes, the result is `PASSED` with `"retried": true`, and its message keeps what the first attempt reported. If it fails again, the result is `FAILED` and the message holds both attempts. The summary counts retried tests, so a test that needs its retry night after night is visible without failing the run. `RETRY_FAILED_TESTS` in `globals.py` sets the number of retries; 0 turns them off. A test whose outcome doesn't depend on the model sets `RETRY_ON_FAILURE = False`.
+
+### Crashes
+
+LIMA writes `data\crash_log.txt` in its install folder when it crashes. The runner reads it before and after every test in a test package: if it changed, or LIMA's crash window is open, that test fails and its message says LIMA crashed during it, with the end of the log. The whole log is in the report's `crash_logs` section.
+
 ## Prod builds and test builds
 
 The suite runs against either kind of LIMA installer, and `test_results.json` records which one it tested in `build_type` (`prod` or `test`):
@@ -104,14 +114,14 @@ LIMA 2.x asks before every action that changes the screen — clicking, typing, 
 
 The approval tests need the opposite: to see that popup and answer it deliberately. They therefore run inside `manual_approvals()`, which pauses both the background approver and the pre-typing approval in `type_into_lima`, and always restores them — including when a test fails. While it is paused nothing auto-approves a popup, so answer or close any open popup before typing into LIMA: an `n` typed while the popup is open would deny it.
 
-They live in `regression_tests/approval_tests/`, one file per scenario. `__init__.py` finds every `test_*` module in that package (sorted by module name) and runs each module's `run(executor)`. To add a test:
+They live in `regression_tests/approval_tests/`, one file per scenario. The runner (`lima_test_packages.py`) finds every `test_*` module in that package (sorted by module name) and runs each module's `run(executor)`. To add a test:
 
 1. Add one new file, e.g. `test_20_replacement_instruction.py`.
 2. Give it a `RESULT_NAME` and a `def run(executor)` that reports exactly one result with `executor.add_test_result(RESULT_NAME, TEST_PASSED|TEST_FAILED, message)`.
 3. Use the shared steps in `approval_tests/_common.py` (`ensure_lima_ready`, `close_apps`, `wait_for_app`, `send_instruction`, `cleanup`) and the popup helpers in `lima_action_approver.py` (`manual_approvals`, `wait_for_action_prompt`, `answer_action_prompt`, `wait_for_replacement_prompt`, `close_replacement_prompt`, `submit_replacement_instruction`).
 4. Number the file with the next free number (10, 20, 30, …): the number fixes the run order, and one file per test means separate changes never collide. Files starting with `_` (`_common.py`) are helpers and are not run.
 
-`run_all_approval_tests(executor)` runs the package and closes LIMA between tests, like the tool and model sweeps.
+The runner closes LIMA after every test, like the tool and model sweeps.
 
 ## Feature tests
 
@@ -128,6 +138,28 @@ The background approver answers Yes to every action, as in the tool sweep. The p
 
 Every file a feature test creates starts with `lima-feature-test-`, and the test deletes it again. Tests that change LIMA's own data (memories) back the file up first and put it back afterwards.
 
+## AI tool tests
+
+`regression_tests/ai_tool_tests/` checks the tools LIMA's AI calls to act on the computer, on the practice page (see below): click, right-click and double-click a named button, move the mouse without clicking, each of ten `press_key` keys, and typing with and without Enter. Each test asks LIMA to do one thing and then reads the event the page recorded, so a click on the wrong button, Tab where Shift+Tab was asked for, or a form submitted when it should not have been, fails.
+
+The instruction is sent the way a keyboard user sends one from another program: the quick input hotkey opens LIMA's Ask Lima popup over the page (`ask_lima_from_here` in `ai_tool_tests/_common.py`), and when it closes the page is in front again, so the page is what LIMA sees and acts on. `run_page_test` in the same file is the whole shape of one test; a test module is its instructions and checks.
+
+## Test packages
+
+`approval_tests/`, `feature_tests/` and `ai_tool_tests/` are test packages: folders of `test_*.py` modules that `lima_test_packages.py` finds and runs. The packages and their order are listed in `TEST_PACKAGES` at the top of `lima_test_executor.py`. Adding a test is one new file in a package; adding a package is one new folder and one new line in that list. To run only some packages while working on one, trim the list.
+
+A test module has one of two shapes:
+
+- **One test:** `RESULT_NAME` and `run(executor)`, which reports exactly one result.
+- **A table of tests:** `CASES` (a list), `case_name(case)` and `run_case(executor, case)`, which reports exactly one result for that row. Every row gets its own result, its own fresh LIMA and its own retry. Use it when the same steps repeat over a list, such as one row per key or per setting.
+
+### Shared building blocks
+
+- **`lima_practice_page.py`: a page that reports what was done to it.** It serves one page on this machine only (`127.0.0.1`), opens it in its own Microsoft Edge window with a throwaway profile, and records every click, double-click, right-click, hover, scroll, key press, field value and form submission the page sees. A mouse or keyboard test asks LIMA to act on the page and then reads the event that proves it happened, instead of asking a model about screenshots. The page has buttons (Apple, Banana, Cherry), a link, a form, a key practice box, a list that scrolls on its own, a long article and a bar chart with known values.
+- **`lima_judge.py`: a second model for what code can't check.** `judge(question, evidence_text, images)` asks `JUDGE_MODEL` (in `globals.py`) one question and returns PASS or FAIL with a reason. Use it only where there is no direct check, such as whether LIMA's description of the screen is accurate or whether a window's text is clipped, and hand it the facts the test knows to be true. On FAIL the question, evidence and pictures are saved under `reports/artifacts/`. If the judge can't be reached the result says `JUDGE UNAVAILABLE`, which is not a verdict on LIMA; the test still fails, because a check that did not happen must not look like one that passed.
+- **`lima_backup.py`: put LIMA's data back.** A test that changes `config.json`, memories, saved conversations or connected apps backs them up first (`backup_data`), and afterwards closes LIMA and restores them byte for byte (`close_lima_and_restore`). A restore that fails is reported as `CLEANUP FAILED` and fails the test. `seed_config` sets `config.json` keys for one test.
+- **`lima_ui.py`: LIMA's own windows.** Open a menu item by name, find a window, find a control by its accessible name, press a button, read a list or the transcript.
+
 ## Project Structure
 
 ```
@@ -136,7 +168,7 @@ lima-testing-suite/
 ├── README.md                   # This file
 ├── requirements.txt            # Python dependencies
 ├── main.py                     # Main entry point
-├── globals.py                  # Suite tunables (vision model, sleeps, AI wait, audio window)
+├── globals.py                  # Suite tunables (vision and judge models, retries, sleeps, audio window)
 ├── run_regression_tests.bat    # Windows batch launcher
 ├── lima_auth.py                # Authentication for the suite
 ├── check_auth.py               # Quick auth-setup verification before a run
@@ -152,12 +184,17 @@ lima-testing-suite/
     ├── lima_voice_tests.py         # TTS voice-coverage sweep
     ├── lima_settings_tests.py      # Settings hotkey-reconfigure regression guard
     ├── lima_action_approver.py     # Answers LIMA's approval popups (auto, or per-test)
+    ├── lima_test_packages.py       # Finds and runs the test packages (retry, crash attribution)
+    ├── lima_practice_page.py       # Local page that records clicks, keys, scrolling, typing
+    ├── lima_judge.py               # Second model for what code can't check
+    ├── lima_backup.py              # Back up and restore LIMA's data around a test
+    ├── lima_ui.py                  # LIMA's own windows over UI Automation
     └── approval_tests/             # Approval-loop tests: one test_*.py file per scenario
-        ├── __init__.py             # Discovery + run_all_approval_tests
+        ├── __init__.py             # What the package covers
         ├── _common.py              # Shared steps (LIMA ready, apps, instruction, cleanup)
         └── test_10_deny_stops_action.py  # Approval: No stops the action
     └── feature_tests/              # LIMA 2.x feature tests: one test_*.py file per feature
-        ├── __init__.py             # Discovery + run_all_feature_tests
+        ├── __init__.py             # What the package covers
         └── _common.py              # Shared checks (windows, Notepad, files, saved conversation)
 ```
 

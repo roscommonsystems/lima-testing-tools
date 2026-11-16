@@ -21,6 +21,28 @@ VISION_TEMPERATURE = 0
 # Thinking tokens are billed as output. None = omit the field and use the provider default.
 VISION_REASONING_EFFORT = "low"
 
+# --- Judgement checks (OpenRouter) ----------------------------------------------------
+# Some outcomes can't be checked by code: whether LIMA's description of the screen is
+# accurate, whether a summary is faithful to the page, whether a window's layout is broken.
+# Those go to this model, which takes text and images. It is only used where no direct check
+# (a file, a window's state, LIMA's saved conversation) exists. See regression_tests/lima_judge.py.
+JUDGE_MODEL = "typesafe/jev-router"
+JUDGE_TEMPERATURE = 0
+# A judge call that errors or returns unusable JSON is tried this many times in total.
+JUDGE_ATTEMPTS = 3
+
+# --- Test runner ----------------------------------------------------------------------
+# Most tests depend on what LIMA's AI model decides to do, which varies from run to run. A
+# failed test is run again this many times in a fresh LIMA. A pass on a later attempt is
+# reported as PASSED and marked "retried", with the first failure kept in its message, so an
+# intermittent fault stays visible without failing the run. 0 = never retry.
+RETRY_FAILED_TESTS = 1
+
+# --- Practice page --------------------------------------------------------------------
+# The mouse and keyboard tests act on a page the suite serves on this machine only
+# (127.0.0.1). 0 = any free port. See regression_tests/lima_practice_page.py.
+PRACTICE_PAGE_PORT = 0
+
 # --- Timing ---------------------------------------------------------------------------
 SLEEP_A = 1   # Single UI action (key press, click, focus)
 SLEEP_B = 2   # Window state change (activate, maximize, restore)

@@ -63,6 +63,16 @@ ANSWER_VIAS = (VIA_BUTTON, VIA_KEY, VIA_HOTKEY)
 DEFAULT_APPROVE_HOTKEY = {"modifier": "ctrl+alt", "key": "y"}
 DEFAULT_DENY_HOTKEY = {"modifier": "ctrl+alt", "key": "n"}
 
+# All six of LIMA's hotkeys by their config.json key, with the same defaults.
+DEFAULT_HOTKEYS = {
+    "stop_speech_hotkey": {"modifier": "ctrl+alt", "key": "k"},
+    "observe_screen_hotkey": {"modifier": "ctrl+alt", "key": "j"},
+    "mute_microphone_hotkey": {"modifier": "ctrl+alt", "key": "u"},
+    "quick_input_hotkey": {"modifier": "ctrl+alt", "key": "h"},
+    "approve_action_hotkey": DEFAULT_APPROVE_HOTKEY,
+    "deny_action_hotkey": DEFAULT_DENY_HOTKEY,
+}
+
 WM_CLOSE = 0x0010
 
 # The background thread and type_into_lima (main thread) both approve popups. Taking turns
@@ -214,6 +224,24 @@ def get_answer_hotkeys(install_path=None):
         "approve": _hotkey_keys(config.get("approve_action_hotkey"), DEFAULT_APPROVE_HOTKEY),
         "deny": _hotkey_keys(config.get("deny_action_hotkey"), DEFAULT_DENY_HOTKEY),
     }
+
+
+def get_hotkey(name, install_path=None):
+    """
+    One of LIMA's hotkeys as pyautogui key names, read from its config.json.
+
+    Args:
+        name: the config key, one of DEFAULT_HOTKEYS, e.g. "stop_speech_hotkey".
+
+    The config is read rather than assumed: a machine whose config.json was written by an
+    older LIMA, or whose user changed the hotkey in Settings, keeps its own combination, and
+    pressing the default there does nothing.
+
+        get_hotkey("stop_speech_hotkey")  ->  ['ctrl', 'alt', 'k']
+    """
+    config = read_lima_config(install_path)
+    keys = _hotkey_keys(config.get(name), DEFAULT_HOTKEYS[name])
+    return keys
 
 
 def _prompt_hwnd(prompt):

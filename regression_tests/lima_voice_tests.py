@@ -15,6 +15,7 @@ from lima_test_utils import (
     AUDIO_MAX_DURATION_S,
 )
 from lima_model_tests import _open_settings  # generic "open the Settings dialog" helper
+from lima_action_approver import get_hotkey
 
 # The voices are discovered from the Settings "Text-to-Speech Voice" dropdown at runtime
 # (see _discover_available_voices) instead of a hardcoded list, so the test tracks
@@ -163,11 +164,13 @@ def run_all_voice_tests(executor):
 
     # LIMA narrates the screen on startup; silence it before the sweep so it doesn't
     # overlap the first voice's test. Sent twice (with a gap) in case narration starts
-    # a beat after launch. Ctrl+Alt+Insert is LIMA's default "Stop Speech" hotkey.
-    print("  Silencing LIMA's startup narration...")
-    pyautogui.hotkey('ctrl', 'alt', 'insert')
+    # a beat after launch. The Stop Speech hotkey is read from LIMA's config.json: its
+    # default is Ctrl+Alt+K, and a config written by an older LIMA may still hold another.
+    stop_speech_keys = get_hotkey("stop_speech_hotkey", executor.process_manager.install_path)
+    print(f"  Silencing LIMA's startup narration ({'+'.join(stop_speech_keys)})...")
+    pyautogui.hotkey(*stop_speech_keys)
     time.sleep(SLEEP_B)
-    pyautogui.hotkey('ctrl', 'alt', 'insert')
+    pyautogui.hotkey(*stop_speech_keys)
     time.sleep(SLEEP_A)
 
     total = len(voices)
@@ -200,9 +203,8 @@ def run_all_voice_tests(executor):
             # audio window captures the count-to-5 response in the switched voice — not
             # ambient narration. This matters for an UNATTENDED run (no one to click Stop):
             # otherwise leftover narration could let a silent/broken voice false-pass.
-            # Ctrl+Alt+Insert is LIMA's default "Stop Speech" hotkey.
             print("  Stopping any ongoing narration (Stop Speech)...")
-            pyautogui.hotkey('ctrl', 'alt', 'insert')
+            pyautogui.hotkey(*stop_speech_keys)
             time.sleep(SLEEP_A)
 
             # Step 2: Make LIMA speak so the new voice actually produces audio

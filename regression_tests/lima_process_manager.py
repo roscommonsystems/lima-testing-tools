@@ -97,6 +97,7 @@ class LimaProcessManager:
         """
         from lima_test_utils import (find_process_by_name, find_windows_by_title,
                                      SLEEP_A, SLEEP_D)
+        from lima_ui import decline_update_offer
         import uiautomation as uia
         self._terminate_stale_instances(exe_path)
         original_dir = os.getcwd()
@@ -114,6 +115,13 @@ class LimaProcessManager:
                     if self.process:
                         self.pid = self.process.pid
                 if self.process:
+                    # An install that is behind the released version offers an update in a
+                    # modal window during startup, and waits there. Decline it, or the chat
+                    # box never appears and every test fails to launch.
+                    try:
+                        decline_update_offer()
+                    except Exception as error:
+                        print(f"  ! Could not check for LIMA's update offer: {error}")
                     candidates = find_windows_by_title("LIMA", pid=self.pid)
                     if not candidates:
                         candidates = find_windows_by_title("LIMA")
