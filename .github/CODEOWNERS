@@ -1,4 +1,5 @@
 # CODEOWNERS: Auto-request review from @info-int on all PRs
 # See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 
-* @info-int
+<!-- removed because im getting to many notifications -->
+<!-- * @info-int -->
