@@ -140,6 +140,18 @@ Every file a feature test creates starts with `lima-feature-test-`, and the test
 
 ## AI tool tests
 
+Plain `Type <text>` is checked separately from an explicit request not to submit and
+an explicit request to press Enter. Typing checks use the exact field value or
+submission payload. A local chat composer also checks plain typing and explicit
+Enter; it clears after sending, like a chat app. This replaces the legacy test that
+asked LIMA to type into its own input and judged a screenshot.
+
+Run the focused typing outcome checks without desktop input or AI calls:
+
+```bash
+python -m unittest discover -s tests -p test_typing_regressions.py -v
+```
+
 `regression_tests/ai_tool_tests/` checks the tools LIMA's AI calls to act on the computer, on the practice page (see below): click, right-click and double-click a named button, move the mouse without clicking, each of ten `press_key` keys, and typing with and without Enter. Each test asks LIMA to do one thing and then reads the event the page recorded, so a click on the wrong button, Tab where Shift+Tab was asked for, or a form submitted when it should not have been, fails.
 
 The instruction is sent the way a keyboard user sends one from another program: the quick input hotkey opens LIMA's Ask Lima popup over the page (`ask_lima_from_here` in `ai_tool_tests/_common.py`), and when it closes the page is in front again, so the page is what LIMA sees and acts on. `run_page_test` in the same file is the whole shape of one test; a test module is its instructions and checks.

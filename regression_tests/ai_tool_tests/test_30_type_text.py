@@ -3,25 +3,27 @@ AI tools: type text, with and without submitting it.
 
 ``type_text`` has a ``press_enter`` flag: off when the user is filling in a field, on when the
 text should be sent. Getting it wrong either leaves a search unsent or submits a half-filled
-form. The practice page opens with the form's First name field focused, and reports what the
-field holds and whether the form was submitted, so both halves are checked: the text arrived,
-and Enter was or was not pressed.
+form. Test both a form field and a chat composer where Enter sends and clears the draft.
+Check exact text in the field or submission payload and whether a submission happened.
 
 The text is a code word made up for the run, so it can only be in the field because LIMA
 typed it.
 """
 
 from ai_tool_tests import _common
-from feature_tests._common import contains_code_word, make_code_word
-from lima_practice_page import FORM_FIELDS, SUBMIT_NAME
+from feature_tests._common import make_code_word
+from lima_practice_page import FORM_FIELDS, SUBMIT_NAME, CHAT_FIELD_NAME, CHAT_SUBMIT_NAME
 
 FIELD_NAME = FORM_FIELDS[0]
 FIELD_ID = "first-name"
 
-# (result name, the instruction with a place for the code word, whether the form must be sent)
+# (result name, instruction, whether to submit, field to focus)
 CASES = (
-    ("AI tools: type without submitting", "Type {code_word} here, but don't submit it yet.", False),
-    ("AI tools: type and press Enter", "Type {code_word} here and press Enter.", True),
+    ("AI tools: plain type leaves text unsubmitted", "Type {code_word}", False, FIELD_ID),
+    ("AI tools: type without submitting", "Type {code_word} here, but don't submit it yet.", False, FIELD_ID),
+    ("AI tools: type and press Enter", "Type {code_word} here and press Enter.", True, FIELD_ID),
+    ("AI tools: plain type in chat does not send", "Type {code_word}", False, "chat-message"),
+    ("AI tools: type and press Enter in chat", "Type {code_word} here and press Enter.", True, "chat-message"),
 )
 
 
@@ -30,30 +32,35 @@ def case_name(case):
     return result_name
 
 
-def _check_for(code_word, must_submit):
+def _check_for(code_word, must_submit, field_name=FIELD_NAME, submit_name=SUBMIT_NAME):
     def check(page, since):
-        submit = page.wait_for_event("submit", target=SUBMIT_NAME, since=since,
+        submit = page.wait_for_event("submit", target=submit_name, since=since,
                                      timeout=_common.EVENT_TIMEOUT)
-        typed = page.field_value(FIELD_NAME)
-        if not contains_code_word(typed, code_word):
-            outcome = f"The {FIELD_NAME} field holds {typed!r}, not the code word {code_word!r}."
-            return False, outcome
-        if must_submit and submit is None:
-            outcome = f"{code_word!r} was typed into {FIELD_NAME}, but the form was never submitted."
-            return False, outcome
+        typed = page.field_value(field_name)
         if not must_submit and submit is not None:
-            outcome = (f"{code_word!r} was typed into {FIELD_NAME}, but the form was submitted "
-                       f"although LIMA was asked not to.")
+            outcome = f"{submit_name} was triggered although the instruction did not authorize submission."
             return False, outcome
-        sent = "and the form was submitted" if must_submit else "and the form was not submitted"
-        outcome = f"{code_word!r} was typed into {FIELD_NAME} {sent}."
+        if must_submit:
+            if submit is None:
+                return False, f"{submit_name} was never triggered. The field holds {typed!r}."
+            sent_text = submit.get("detail", {}).get("values", {}).get(field_name)
+            if sent_text != code_word:
+                return False, f"{submit_name} submitted {sent_text!r}, expected exactly {code_word!r}."
+            outcome = f"{submit_name} submitted exactly {code_word!r}."
+        else:
+            if typed != code_word:
+                return False, f"The {field_name} field holds {typed!r}, expected exactly {code_word!r}."
+            outcome = f"{code_word!r} remains in {field_name}; {submit_name} was not triggered."
         return True, outcome
     return check
 
 
 def run_case(executor, case):
-    result_name, instruction_template, must_submit = case
+    result_name, instruction_template, must_submit, field_id = case
     code_word = make_code_word()
     instruction = instruction_template.format(code_word=code_word)
-    check = _check_for(code_word, must_submit)
-    _common.run_page_test(executor, result_name, instruction, check, focus=FIELD_ID)
+    chat = field_id == "chat-message"
+    check = _check_for(code_word, must_submit,
+                       CHAT_FIELD_NAME if chat else FIELD_NAME,
+                       CHAT_SUBMIT_NAME if chat else SUBMIT_NAME)
+    _common.run_page_test(executor, result_name, instruction, check, focus=field_id)
