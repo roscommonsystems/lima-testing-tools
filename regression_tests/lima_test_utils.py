@@ -277,112 +277,49 @@ def find_lima_message_input(lima_window):
 
 
 def type_into_lima(text, max_tabs=10):
+    """Type only into LIMA's verified foreground input; raise on setup failure.
+
+    max_tabs is retained for callers using the old signature. Blind tabbing is no
+    longer safe: it can send a test instruction to an unrelated application.
     """
-    Type text into LIMA's message input. Locates the input directly via UI
-    automation (see find_lima_message_input). If that fails, falls back to
-    pressing Tab until a text input has focus, up to max_tabs times, and
-    typing with pyautogui.
-    """
-    # While LIMA's approval popup is open it captures every Y and N typed anywhere, so an
-    # "n" in the text would deny the pending action. Approve it before typing.
     from lima_action_approver import approve_action_prompts
     approve_action_prompts()
-
-    try:
-        lima_window = find_lima_uia_window()
-        message_input = find_lima_message_input(lima_window) if lima_window else None
-        if message_input:
-            message_input.SetFocus()
-            message_input.Click()
-            time.sleep(0.2)
-            message_input.SendKeys(text)
-            print(f"  OK Typed text into LIMA message input using uiautomation")
-            return
-        print(f"  ! Could not find LIMA message input via uiautomation, falling back to tabbing")
-    except Exception as e:
-        print(f"  ! uiautomation lookup failed, falling back to tabbing: {e}")
-
-    def get_focused_element():
-        """
-        Get the currently focused UI element using uiautomation interface.
-        Returns the focused element wrapper or None if not found.
-        """
+    lima_window = find_lima_uia_window()
+    if lima_window is None:
+        raise RuntimeError("SETUP FAILED: LIMA window not found before typing")
+    hwnd = lima_window.NativeWindowHandle
+    user32 = ctypes.windll.user32
+    if not hwnd:
+        raise RuntimeError("SETUP FAILED: LIMA window has no native handle")
+    if user32.GetForegroundWindow() != hwnd:
+        pyautogui.press('escape')
+    if not activate_window(hwnd):
+        raise RuntimeError("SETUP FAILED: LIMA could not be brought to the foreground")
+    message_input = find_lima_message_input(lima_window)
+    if message_input is None:
+        raise RuntimeError("SETUP FAILED: LIMA message input not found")
+    message_input.SetFocus()
+    message_input.Click()
+    time.sleep(0.2)
+    if user32.GetForegroundWindow() != hwnd:
+        raise RuntimeError("SETUP FAILED: another window intercepted LIMA input focus")
+    message_input.SendKeys(text)
+    # Read the actual editable value, never its accessible name or transcript.
+    deadline = time.time() + 2.0
+    while True:
         try:
-            # Use uiautomation to get the focused element
-            focused_element = uia.GetFocusedControl()
-            if focused_element:
-                return focused_element
-        except Exception as e:
-            print(f"  ! Debug: get_focused_element error: {e}")
-        return None
-
-    def is_text_input(element):
-        """
-        Check if the element is a text input using multiple fallback methods.
-        Returns True if the element is an Edit control, False otherwise.
-        """
-        if element is None:
-            return False
-
-        try:
-            # The conversation pane is a read-only Edit; never treat it as the input
+            value = message_input.GetValuePattern().Value
+        except Exception:
             try:
-                if element.GetValuePattern().IsReadOnly:
-                    return False
+                value = message_input.GetTextPattern().DocumentRange.GetText(-1)
             except Exception:
-                pass
-
-            # Method 1: Check ControlTypeName in uiautomation
-            control_type_name = element.ControlTypeName
-            if control_type_name:
-                if control_type_name == "Edit" or control_type_name == "EditControl":
-                    return True
-
-            # Method 2: Check ClassName as fallback
-            class_name = element.ClassName
-            if class_name and "edit" in class_name.lower():
-                return True
-
-            # Method 3: Check AutomationId
-            automation_id = element.AutomationId
-            if automation_id and ("edit" in automation_id.lower() or "input" in automation_id.lower()):
-                return True
-
-        except Exception as e:
-            print(f"  ! Debug: is_text_input error: {e}")
-        return False
-
-    # Tab until the focused element is a text input (Edit control)
-    for attempt in range(max_tabs):
-        focused = get_focused_element()
-
-        if focused is None:
-            print(f"  ! Could not get focused element (attempt {attempt + 1}/{max_tabs}), tabbing...")
-        elif is_text_input(focused):
-            # Log what was detected for debugging purposes
-            try:
-                control_type_name = focused.ControlTypeName
-                class_name = focused.ClassName
-                name = focused.Name if focused.Name else 'N/A'
-                print(f"  OK Found text input: ControlTypeName={control_type_name}, ClassName={class_name}, Name='{name}'")
-            except Exception as e:
-                print(f"  OK Found text input (details unavailable: {e})")
-            break
-        else:
-            # Log what was found instead for debugging
-            try:
-                control_type_name = focused.ControlTypeName
-                class_name = focused.ClassName
-                name = focused.Name if focused.Name else 'N/A'
-                print(f"  ! Focused element is not text input (attempt {attempt + 1}/{max_tabs}): ControlTypeName={control_type_name}, ClassName={class_name}, Name='{name}', tabbing...")
-            except Exception as e:
-                print(f"  ! Focused element is not text input (attempt {attempt + 1}/{max_tabs}): error getting details: {e}, tabbing...")
-
-        pyautogui.press('tab')
-        time.sleep(0.3)
-
-    # Type into whichever control now has focus
-    pyautogui.write(text, interval=0.15)
+                value = None
+        if value is not None and value.replace('\r\n', '\n') == text.replace('\r\n', '\n'):
+            print("  OK Typed and verified text in LIMA message input")
+            return
+        if time.time() >= deadline:
+            raise RuntimeError("SETUP FAILED: instruction did not reach LIMA input exactly; not submitting")
+        time.sleep(0.1)
 
 
 def verify_text_in_lima_input(expected_text):
