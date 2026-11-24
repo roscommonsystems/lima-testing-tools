@@ -276,12 +276,32 @@ def find_lima_message_input(lima_window):
     return max(edits, key=lambda c: (not is_read_only(c), c.BoundingRectangle.top))
 
 
-def type_into_lima(text, max_tabs=10):
-    """Type only into LIMA's verified foreground input; raise on setup failure.
+def _read_edit_value(control):
+    """Read editable text only; an accessible name is not the input value."""
+    try:
+        return control.GetValuePattern().Value
+    except Exception:
+        try:
+            return control.GetTextPattern().DocumentRange.GetText(-1)
+        except Exception:
+            return None
 
-    max_tabs is retained for callers using the old signature. Blind tabbing is no
-    longer safe: it can send a test instruction to an unrelated application.
-    """
+
+def _wait_for_edit_value(control, expected_text):
+    deadline = time.monotonic() + 2.0
+    while True:
+        value = _read_edit_value(control)
+        if value is not None and value.replace('\r\n', '\n') == expected_text.replace('\r\n', '\n'):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.1)
+
+
+def type_into_lima(text):
+    """Replace LIMA's verified foreground input; raise on setup failure."""
+    # While LIMA's approval popup is open it captures every Y and N typed anywhere, so an
+    # "n" in the text would deny the pending action. Approve it before typing.
     from lima_action_approver import approve_action_prompts
     approve_action_prompts()
     lima_window = find_lima_uia_window()
@@ -291,8 +311,14 @@ def type_into_lima(text, max_tabs=10):
     user32 = ctypes.windll.user32
     if not hwnd:
         raise RuntimeError("SETUP FAILED: LIMA window has no native handle")
-    if user32.GetForegroundWindow() != hwnd:
-        pyautogui.press('escape')
+    foreground = user32.GetForegroundWindow()
+    if foreground and foreground != hwnd:
+        try:
+            is_start_menu = psutil.Process(get_window_pid(foreground)).name().lower() == "startmenuexperiencehost.exe"
+        except (psutil.Error, OSError):
+            is_start_menu = False
+        if is_start_menu and user32.GetForegroundWindow() == foreground:
+            pyautogui.press('escape')
     if not activate_window(hwnd):
         raise RuntimeError("SETUP FAILED: LIMA could not be brought to the foreground")
     message_input = find_lima_message_input(lima_window)
@@ -303,23 +329,31 @@ def type_into_lima(text, max_tabs=10):
     time.sleep(0.2)
     if user32.GetForegroundWindow() != hwnd:
         raise RuntimeError("SETUP FAILED: another window intercepted LIMA input focus")
-    message_input.SendKeys(text)
-    # Read the actual editable value, never its accessible name or transcript.
-    deadline = time.time() + 2.0
-    while True:
-        try:
-            value = message_input.GetValuePattern().Value
-        except Exception:
-            try:
-                value = message_input.GetTextPattern().DocumentRange.GetText(-1)
-            except Exception:
-                value = None
-        if value is not None and value.replace('\r\n', '\n') == text.replace('\r\n', '\n'):
-            print("  OK Typed and verified text in LIMA message input")
-            return
-        if time.time() >= deadline:
+
+    def clear_input():
+        message_input.SetFocus()
+        if user32.GetForegroundWindow() != hwnd:
+            raise RuntimeError("SETUP FAILED: LIMA lost foreground before clearing input")
+        message_input.SendKeys('{Ctrl}a{Delete}')
+        if not _wait_for_edit_value(message_input, ''):
+            raise RuntimeError("SETUP FAILED: LIMA input could not be cleared; not submitting")
+
+    try:
+        clear_input()
+        if user32.GetForegroundWindow() != hwnd:
+            raise RuntimeError("SETUP FAILED: LIMA lost foreground before typing")
+        message_input.SendKeys(text)
+        if not _wait_for_edit_value(message_input, text):
             raise RuntimeError("SETUP FAILED: instruction did not reach LIMA input exactly; not submitting")
-        time.sleep(0.1)
+    except Exception:
+        # Best effort only: never send cleanup keys to another foreground app.
+        if user32.GetForegroundWindow() == hwnd:
+            try:
+                clear_input()
+            except Exception as error:
+                print(f"  ! Could not clear LIMA input after setup failure: {error}")
+        raise
+    print("  OK Typed and verified text in LIMA message input")
 
 
 def verify_text_in_lima_input(expected_text):
@@ -338,28 +372,9 @@ def verify_text_in_lima_input(expected_text):
             print(f"  ! Could not find LIMA Edit control to verify text")
             return False
 
-        # Get the text value from the Edit control
-        try:
-            value = None
-            # Method 1: ValuePattern.Value
-            try:
-                value = edit_control.GetValuePattern().Value
-            except Exception:
-                pass
-            # Method 2: TextPattern (also available on QTextEdit)
-            if not value:
-                try:
-                    value = edit_control.GetTextPattern().DocumentRange.GetText(-1)
-                except Exception:
-                    pass
-            # Method 3: Name attribute (last resort)
-            if not value and hasattr(edit_control, 'Name'):
-                value = edit_control.Name
-            if not value:
-                print(f"  ! Could not retrieve text from LIMA Edit control")
-                return False
-        except Exception as error:
-            print(f"  ! Error getting text from LIMA Edit control: {error}")
+        value = _read_edit_value(edit_control)
+        if value is None:
+            print("  ! Could not retrieve text from LIMA Edit control")
             return False
 
         if expected_text in value:
