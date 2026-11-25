@@ -40,14 +40,14 @@ MODEL_KEYBOARD_STEPS = 24
 
 
 def _find_settings_window(maxdepth=6):
-    """Find LIMA's Settings dialog anywhere in the tree (it is nested, not top-level)."""
+    """Find the Settings dialog, excluding transcript items that mention its name."""
     root = uia.GetRootControl()
     stack = [(c, 0) for c in root.GetChildren()]
     while stack:
         ctrl, depth = stack.pop()
         try:
             nm = (ctrl.Name or "").lower()
-            if "setting" in nm and "lima" in nm:
+            if ctrl.ControlTypeName in ("WindowControl", "PaneControl") and nm == "lima settings":
                 return ctrl
         except Exception as err:
             print(err)
@@ -226,6 +226,7 @@ def _read_model_options(settings_win):
     """Expand the Base AI Model combo and return only its option labels."""
     combo = settings_win.ComboBoxControl(Name=MODEL_COMBO_NAME)
     if not combo.Exists(2):
+        print("  ! Model combo not found in the Settings dialog")
         return []
 
     labels = []
