@@ -850,15 +850,24 @@ def find_window_by_title(title_substring, timeout=10):
 
 
 def open_file_menu_item(menu_item_name, menu_nav_keys):
-    """Open LIMA's File menu and activate the target item.
+    """Open LIMA's File menu and activate the target item."""
+    open_menu_item("File", menu_item_name, menu_nav_keys)
 
-    Preferred path: UIA-by-name click (robust to menu reordering and keystroke
-    timing). Fallback: the legacy hardcoded key sequence, used when the menu
-    item has no UIA name or the UIA tree is unavailable.
+
+def open_menu_item(menu, menu_item_name, menu_nav_keys):
+    """Open LIMA's File or Help menu and activate the target item.
+
+    Alt puts the menu bar in keyboard mode on File; Help is the last menu, so
+    Left wraps round to it. Preferred path: UIA-by-name click (robust to menu
+    reordering and keystroke timing). Fallback: the legacy hardcoded key
+    sequence, used when the menu item has no UIA name or the UIA tree is
+    unavailable.
     """
+    open_keys = {"File": ["enter"], "Help": ["left", "enter"]}[menu]
     pyautogui.press('alt')
-    time.sleep(SLEEP_A)
-    pyautogui.press('enter')
+    for key in open_keys:
+        time.sleep(SLEEP_A)
+        pyautogui.press(key)
     time.sleep(SLEEP_B)
 
     activated = False
@@ -874,9 +883,9 @@ def open_file_menu_item(menu_item_name, menu_nav_keys):
 
 
 def _open_dialog_item_via_uia(menu_item_name):
-    """Find the open File menu's target item by UIA name and click it.
+    """Find the open menu's target item by UIA name and click it.
 
-    Anchors on LIMA's open QMenu (File menu) and matches the item's accessible
+    Anchors on LIMA's open QMenu and matches the item's accessible
     name case-insensitively, so it is robust to menu reordering, keystroke
     races, and focus hiccups that can swallow a hardcoded key sequence.
 

@@ -10,7 +10,7 @@ import pyautogui
 
 from lima_test_utils import (
     take_screenshot, verify_tool_with_screenshots, overlay_cursor_on_screenshot,
-    find_window_by_title, measure_peak_audio, open_file_menu_item,
+    find_window_by_title, measure_peak_audio, open_menu_item,
     save_failure_artifacts, with_artifact_note,
     TEST_PASSED, TEST_FAILED, speak_tts, type_into_lima,
     SLEEP_A, SLEEP_B, SLEEP_C, SLEEP_D,
@@ -30,7 +30,7 @@ def run_all_tool_tests(executor, kinds=None):
     print("=" * 60)
 
     # ALL new tests go here — do NOT add standalone _test_* methods to LimaTestExecutor.
-    # Pick a kind: "command" (type+Enter+30s+screenshot-verify), "dialog" (File-menu nav+title poll),
+    # Pick a kind: "command" (type+Enter+30s+screenshot-verify), "dialog" (File- or Help-menu nav+title poll),
     # or "audio" (type+Enter+measure_peak_audio). The loop handles banner/TTS/fresh-launch/result.
     tool_tests = [
         {
@@ -57,7 +57,8 @@ def run_all_tool_tests(executor, kinds=None):
                 "Look for a dialog box with About information (version, copyright, etc.) "
                 "that was not present in the BEFORE screenshot."
             ),
-            "menu_nav_keys": ["down", "down", "down", "enter"],
+            "menu": "Help",
+            "menu_nav_keys": ["down", "down", "enter"],
             "menu_item_name": "About Lima",
             "dialog_title_keywords": ["About LIMA", "About"],
         },
@@ -251,11 +252,12 @@ def run_all_tool_tests(executor, kinds=None):
                             pass
                         time.sleep(SLEEP_B)
             elif kind == "dialog":
-                # Open File menu via Alt → Enter, then activate the target item.
-                # UIA-by-name is attempted first (robust to menu reordering and
-                # keystroke races); the legacy key sequence is the fallback.
-                print(f"  Opening {test_name} via File menu...")
-                open_file_menu_item(test.get("menu_item_name"), test["menu_nav_keys"])
+                # Open the test's menu (File unless it names another), then activate
+                # the target item. UIA-by-name is attempted first (robust to menu
+                # reordering and keystroke races); the legacy key sequence is the fallback.
+                menu = test.get("menu", "File")
+                print(f"  Opening {test_name} via {menu} menu...")
+                open_menu_item(menu, test.get("menu_item_name"), test["menu_nav_keys"])
             else:
                 # Audio kind: type command into LIMA, submit, then measure per-session audio peak.
                 # measure_peak_audio's own duration IS the wait — no 30s AI loop needed.
@@ -312,7 +314,7 @@ def run_all_tool_tests(executor, kinds=None):
                         time.sleep(SLEEP_A)
                         executor.process_manager.refocus(timeout=10)
                         time.sleep(SLEEP_A)
-                        open_file_menu_item(test.get("menu_item_name"), test["menu_nav_keys"])
+                        open_menu_item(menu, test.get("menu_item_name"), test["menu_nav_keys"])
 
             # Step 11: Verification using the OpenRouter vision model
             verification_result = None
