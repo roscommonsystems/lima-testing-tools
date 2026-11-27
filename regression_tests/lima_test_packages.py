@@ -18,6 +18,9 @@ Either shape may set ``RETRY_ON_FAILURE = False`` for a check whose outcome does
 the AI model (a version number, a control that is or isn't there): a failure there is not
 going to change on a second attempt.
 
+``TestSetupError`` also prevents retries for a particular attempt. ``TestCleanupError``
+reports that failure and stops the entire run, because later tests cannot trust its state.
+
 What the runner adds around each test:
 
 * **A fresh LIMA.** LIMA is closed after every test, so one test can't leave an app, a popup or
@@ -38,6 +41,7 @@ import pkgutil
 import time
 from dataclasses import dataclass
 from typing import Callable
+from lima_test_errors import TestSetupError, TestCleanupError
 
 from lima_test_utils import (
     TEST_FAILED, SLEEP_B, RETRY_FAILED_TESTS, check_crash_logs, find_windows_by_title,
@@ -77,6 +81,7 @@ class ResultRecorder:
         self._executor = executor
         self.results = []
         self.errors = []
+        self.setup_error = None
 
     def add_test_result(self, test_name, status, message, **details):
         result = {"name": test_name, "status": status, "message": message, "details": details}
@@ -201,6 +206,12 @@ def _attempt(executor, unit):
     crash = None
     try:
         unit.run(recorder)
+    except TestSetupError as error:
+        recorder.setup_error = error
+        if recorder.results:
+            recorder.fail_all(str(error))
+        else:
+            recorder.add_test_result(unit.name, TEST_FAILED, str(error))
     except Exception as error:
         message = f"The test raised an unexpected error: {error}"
         recorder.add_test_result(unit.name, TEST_FAILED, message)
@@ -254,13 +265,16 @@ def run_unit(executor, unit, area):
     recorder = None
     for attempt_number in range(1, attempts_allowed + 1):
         recorder = _attempt(executor, unit)
-        if not recorder.failed or attempt_number == attempts_allowed:
+        if recorder.setup_error or not recorder.failed or attempt_number == attempts_allowed:
             break
         failure = recorder.failure_summary()
         earlier_failures.append(failure)
         print(f"  Attempt {attempt_number} failed; running it again in a fresh LIMA. It reported: {failure}")
     duration_seconds = time.time() - started
     _report(executor, recorder, area, duration_seconds, earlier_failures)
+    if isinstance(recorder.setup_error, TestCleanupError):
+        # Report the failure first, then unwind the executor so no package follows it.
+        raise recorder.setup_error
 
 
 def run_test_package(executor, package, title, area):

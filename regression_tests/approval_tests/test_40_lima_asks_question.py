@@ -192,9 +192,11 @@ def _run_case(executor):
 def run(executor):
     """Run the test and report exactly one result."""
     status, message = TEST_FAILED, "The test did not run"
-    with manual_approvals():
+    with manual_approvals(), _common.approval_config(executor):
         try:
             status, message = _run_case(executor)
+        except _common.TestSetupError:
+            raise
         except Exception as error:
             status, message = TEST_FAILED, f"Exception during the test: {error}"
         finally:
