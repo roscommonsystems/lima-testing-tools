@@ -386,7 +386,7 @@ def run(executor):
     previous case cannot prefix the next instruction.
     """
     results = []
-    with manual_approvals():
+    with manual_approvals(), _common.approval_config(executor):
         try:
             # Same call (and so the same config file) answer_action_prompt(via='hotkey') uses,
             # so a result name can never disagree with the keys actually pressed. Read before

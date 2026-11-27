@@ -8,6 +8,7 @@ keys and hotkeys) can be added as one new file each without touching this one.
 """
 
 import time
+from contextlib import contextmanager
 
 import psutil
 import pyautogui
@@ -18,12 +19,46 @@ from lima_test_utils import (
 )
 from lima_action_approver import (
     dismiss_pending_approvals, find_action_prompts, find_replacement_prompt,
+    read_lima_config,
 )
+from lima_backup import backup_data, close_lima_and_restore, seed_config
 
 
 # --------------------------------------------------------------------------------------
 # LIMA
 # --------------------------------------------------------------------------------------
+
+def _require_approval_config(executor):
+    config = read_lima_config(executor.process_manager.install_path)
+    if config.get("ask_before_every_action") is not True:
+        raise RuntimeError(
+            "SETUP FAILED: approval tests require ask_before_every_action=true in "
+            "LIMA's config.json; opening a program otherwise runs without approval.")
+
+
+@contextmanager
+def approval_config(executor):
+    """Enable action approval before launching LIMA; restore config even after failure.
+
+    Use inside manual_approvals(), so the background approver stays paused during setup
+    and cleanup. The setting also makes the question test exercise pre-approval of an
+    otherwise gated action. Keep it enabled through the keyboard module's fresh launches.
+    """
+    if not executor.process_manager.install_path:
+        raise RuntimeError("SETUP FAILED: LIMA's install path is unknown")
+    close_error = executor.process_manager.close()
+    if close_error:
+        raise RuntimeError(f"SETUP FAILED: could not close LIMA before config backup: {close_error}")
+    backup = backup_data(executor, "config.json")
+    try:
+        seed_config(executor, ask_before_every_action=True)
+        _require_approval_config(executor)
+        yield
+    finally:
+        cleanup_note = close_lima_and_restore(executor, backup)
+        if cleanup_note:
+            raise RuntimeError(f"CLEANUP FAILED: approval test config restore:{cleanup_note}")
+
 
 def ensure_lima_ready(executor):
     """
@@ -37,6 +72,7 @@ def ensure_lima_ready(executor):
     Returns:
         bool: True when LIMA's window is ready.
     """
+    _require_approval_config(executor)
     process_manager = executor.process_manager
     if not process_manager.is_running():
         if not process_manager.exe_full_path:
@@ -50,6 +86,7 @@ def ensure_lima_ready(executor):
             return False
         time.sleep(SLEEP_C)
 
+    _require_approval_config(executor)
     if not process_manager.refocus(timeout=15):
         print("  ! Could not focus LIMA's window")
         return False
