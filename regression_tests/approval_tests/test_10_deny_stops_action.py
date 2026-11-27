@@ -124,6 +124,8 @@ def run(executor):
     with manual_approvals(), _common.approval_config(executor):
         try:
             passed, message = _run_case(executor)
+        except _common.TestSetupError:
+            raise
         except Exception as error:
             passed, message = False, f"Exception during the test: {error}"
         finally:

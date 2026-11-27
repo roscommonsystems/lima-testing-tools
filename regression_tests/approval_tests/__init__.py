@@ -6,7 +6,11 @@ answer (buttons, Y/N keys, the Ctrl+Alt+Y/N hotkeys).
 
 Each module enables ``ask_before_every_action`` before launching LIMA, so opening Notepad
 is gated even when navigation normally runs without approval. The original config is
-restored after the module, including failures; setup and restore failures fail the test.
+restored after the module, including failures. Setup failures are not retried. Restore
+failures stop the whole run and retain the original in data/.lima-approval-backup; approval
+tests refuse to start while that directory exists. To recover, close LIMA, copy its backed-up
+config.json over data/config.json (or delete data/config.json if config-was-missing exists),
+then remove the backup directory. Successful cleanup removes the backup automatically.
 
 Each test is one module in this package with a ``run(executor)`` function. Modules are found
 by discovery (see ``lima_test_packages.py``, sorted by module name), so adding a test means

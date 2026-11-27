@@ -12,6 +12,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'regression_tests')
 from approval_tests import _common
 import lima_backup
 import lima_action_approver
+import lima_test_packages
+from lima_test_errors import TestSetupError, TestCleanupError
 
 
 class ApprovalConfigTests(unittest.TestCase):
@@ -67,7 +69,7 @@ class ApprovalConfigTests(unittest.TestCase):
             self.config.write_text('{}')
             raise OSError('write failed')
         with patch.object(_common, 'seed_config', side_effect=failed_seed):
-            with self.assertRaisesRegex(OSError, 'write failed'):
+            with self.assertRaisesRegex(TestSetupError, 'write failed'):
                 with _common.approval_config(self.executor):
                     self.fail('Scenario must not start')
         self.assertEqual(self.config.read_bytes(), self.original)
@@ -103,6 +105,100 @@ class ApprovalConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'CLEANUP FAILED.*locked'):
                 with _common.approval_config(self.executor):
                     self.assert_enabled()
+
+    def run_package(self, *runs):
+        from types import SimpleNamespace
+        modules = [SimpleNamespace(__name__=f'test_{i}', RESULT_NAME=f'test {i}', run=run)
+                   for i, run in enumerate(runs)]
+        with patch.object(lima_test_packages, 'discover_test_modules', return_value=(modules, [])), \
+             patch.object(lima_test_packages, '_crash_log', return_value={}), \
+             patch.object(lima_test_packages, '_crash_evidence', return_value=None), \
+             patch.object(lima_test_packages, 'RETRY_FAILED_TESTS', 1):
+            lima_test_packages.run_test_package(
+                self.executor, SimpleNamespace(__name__='approval_tests'), 'Approval', 'approval')
+
+    def test_transient_restore_failure_stops_retry_and_following_tests(self):
+        attempts = []
+        following = Mock()
+        real_restore = lima_backup.FileBackup.restore
+        restores = []
+        def restore(backup):
+            restores.append(backup)
+            if len(restores) == 1:
+                return False, 'locked'
+            return real_restore(backup)
+        def run(executor):
+            attempts.append(True)
+            with _common.approval_config(executor, answer_hotkeys=True):
+                executor.add_test_result('approval scenario', 'PASSED', 'worked')
+        with patch.object(lima_backup.FileBackup, 'restore', restore):
+            with self.assertRaisesRegex(TestCleanupError, 'locked'):
+                self.run_package(run, following)
+        self.assertEqual(len(attempts), 1)
+        following.assert_not_called()
+        result = self.executor.add_test_result.call_args
+        self.assertEqual(result.args[1], 'FAILED')
+        self.assertFalse(result.kwargs['retried'])
+        recovery = self.config.parent / '.lima-approval-backup'
+        self.assertEqual((recovery / 'config.json').read_bytes(), self.original)
+        # A new invocation must refuse the contaminated config, even with a new executor.
+        with patch.object(_common, 'backup_data') as backup:
+            with self.assertRaisesRegex(TestCleanupError, 'unresolved approval config backup'):
+                with _common.approval_config(self.executor):
+                    self.fail('Scenario must not start')
+            backup.assert_not_called()
+        # The durable file is sufficient to recover after losing all in-memory backups.
+        self.config.write_bytes((recovery / 'config.json').read_bytes())
+        self.assertEqual(self.config.read_bytes(), self.original)
+
+    def test_setup_failure_is_not_retried_but_clean_tests_can_continue(self):
+        run = Mock()
+        def setup_failure(executor):
+            with _common.approval_config(executor):
+                run()
+        following = Mock(side_effect=lambda executor: executor.add_test_result('next', 'PASSED', 'ok'))
+        with patch.object(_common, 'seed_config', side_effect=OSError('write failed')) as seed:
+            self.run_package(setup_failure, following)
+        seed.assert_called_once()
+        run.assert_not_called()
+        following.assert_called_once()
+        result = self.executor.add_test_result.call_args_list[0]
+        self.assertEqual(result.args[1], 'FAILED')
+        self.assertFalse(result.kwargs['retried'])
+        self.assertEqual(self.config.read_bytes(), self.original)
+        self.assertFalse((self.config.parent / '.lima-approval-backup').exists())
+
+    def test_scenario_failure_can_still_retry_with_original_config(self):
+        attempts = []
+        def run(executor):
+            self.assertEqual(self.config.read_bytes(), self.original)
+            with _common.approval_config(executor):
+                attempts.append(True)
+                executor.add_test_result('scenario', 'FAILED' if len(attempts) == 1 else 'PASSED', 'outcome')
+        self.run_package(run)
+        self.assertEqual(len(attempts), 2)
+        result = self.executor.add_test_result.call_args
+        self.assertEqual(result.args[1], 'PASSED')
+        self.assertTrue(result.kwargs['retried'])
+        self.assertEqual(self.config.read_bytes(), self.original)
+
+    def test_missing_original_and_cleanup_exception_keep_recovery_marker(self):
+        self.config.unlink()
+        with patch.object(_common, 'close_lima_and_restore', side_effect=OSError('locked')):
+            with self.assertRaisesRegex(TestCleanupError, 'locked'):
+                with _common.approval_config(self.executor):
+                    self.assert_enabled()
+        self.assertTrue((self.config.parent / '.lima-approval-backup' / 'config-was-missing').exists())
+
+    def test_launch_config_failure_is_not_swallowed_by_approval_modules(self):
+        module = importlib.import_module('approval_tests.test_10_deny_stops_action')
+        with patch.object(module, 'manual_approvals', side_effect=nullcontext), \
+             patch.object(_common, 'cleanup'), \
+             patch.object(module, '_run_case', side_effect=TestSetupError('SETUP FAILED: config changed')):
+            self.run_package(module.run)
+        result = self.executor.add_test_result.call_args
+        self.assertEqual(result.args[1], 'FAILED')
+        self.assertFalse(result.kwargs['retried'])
 
     def test_test_bindings_are_temporary_and_probes_are_released(self):
         with _common.approval_config(self.executor, answer_hotkeys=True):

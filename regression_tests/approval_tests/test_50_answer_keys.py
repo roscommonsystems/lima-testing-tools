@@ -371,6 +371,8 @@ def _safe_run_case(executor, approve, via, label):
     """Run one case, turning any exception into that case's own failure."""
     try:
         return _run_case(executor, approve, via, label)
+    except _common.TestSetupError:
+        raise
     except Exception as error:
         return False, f"Exception while answering with the {label}: {error}"
     finally:
@@ -413,6 +415,8 @@ def run(executor):
                     passed, message = _safe_run_case(executor, approve, via, label)
                     print(("  OK " if passed else "  X ") + message)
                     results.append((name, passed, message))
+        except _common.TestSetupError:
+            raise
         except Exception as error:
             results.append((RESULT_NAME, False, f"Exception during the test: {error}"))
         finally:

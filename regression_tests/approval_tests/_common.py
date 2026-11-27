@@ -9,6 +9,9 @@ keys and hotkeys) can be added as one new file each without touching this one.
 
 import time
 import ctypes
+import os
+import shutil
+from pathlib import Path
 from contextlib import contextmanager
 
 import psutil
@@ -23,6 +26,7 @@ from lima_action_approver import (
     read_lima_config,
 )
 from lima_backup import backup_data, close_lima_and_restore, seed_config
+from lima_test_errors import TestSetupError, TestCleanupError
 
 
 # --------------------------------------------------------------------------------------
@@ -32,7 +36,7 @@ from lima_backup import backup_data, close_lima_and_restore, seed_config
 def _require_approval_config(executor):
     config = read_lima_config(executor.process_manager.install_path)
     if config.get("ask_before_every_action") is not True:
-        raise RuntimeError(
+        raise TestSetupError(
             "SETUP FAILED: approval tests require ask_before_every_action=true in "
             "LIMA's config.json; opening a program otherwise runs without approval.")
 
@@ -65,10 +69,10 @@ def _test_answer_hotkeys(executor):
             finally:
                 user32.UnregisterHotKey(None, 0xB000)
         elif ctypes.get_last_error() != 1409:
-            raise RuntimeError(f"SETUP FAILED: could not probe {key}: Windows error {ctypes.get_last_error()}")
+            raise TestSetupError(f"SETUP FAILED: could not probe {key}: Windows error {ctypes.get_last_error()}")
         if len(bindings) == 2:
             return dict(zip(("approve_action_hotkey", "deny_action_hotkey"), bindings))
-    raise RuntimeError("SETUP FAILED: no two available approval test hotkeys")
+    raise TestSetupError("SETUP FAILED: no two available approval test hotkeys")
 
 
 @contextmanager
@@ -81,20 +85,47 @@ def approval_config(executor, answer_hotkeys=False):
     With answer_hotkeys=True, also seed two available temporary answer bindings.
     """
     if not executor.process_manager.install_path:
-        raise RuntimeError("SETUP FAILED: LIMA's install path is unknown")
-    close_error = executor.process_manager.close()
-    if close_error:
-        raise RuntimeError(f"SETUP FAILED: could not close LIMA before config backup: {close_error}")
-    backup = backup_data(executor, "config.json")
+        raise TestSetupError("SETUP FAILED: LIMA's install path is unknown")
+    recovery = Path(executor.process_manager.install_path, "data", ".lima-approval-backup")
+    if recovery.exists():
+        raise TestCleanupError(
+            f"CLEANUP FAILED: unresolved approval config backup at {recovery}. "
+            "Close LIMA and restore config.json from this directory (or delete the live "
+            "config if config-was-missing exists), then remove the backup directory.")
     try:
-        settings = _test_answer_hotkeys(executor) if answer_hotkeys else {}
-        seed_config(executor, ask_before_every_action=True, **settings)
-        _require_approval_config(executor)
+        close_error = executor.process_manager.close()
+        if close_error:
+            raise TestSetupError(f"SETUP FAILED: could not close LIMA before config backup: {close_error}")
+        backup = backup_data(executor, "config.json")
+        recovery.mkdir(parents=True)
+        original = backup.backups[0]
+        snapshot = recovery / ("config.json" if original.existed else "config-was-missing")
+        with snapshot.open("wb") as handle:
+            handle.write(original.original)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except TestSetupError:
+        raise
+    except Exception as error:
+        raise TestSetupError(f"SETUP FAILED: could not back up approval config: {error}") from error
+    try:
+        try:
+            settings = _test_answer_hotkeys(executor) if answer_hotkeys else {}
+            seed_config(executor, ask_before_every_action=True, **settings)
+            _require_approval_config(executor)
+        except Exception as error:
+            raise TestSetupError(f"SETUP FAILED: approval config: {error}") from error
         yield
     finally:
-        cleanup_note = close_lima_and_restore(executor, backup)
-        if cleanup_note:
-            raise RuntimeError(f"CLEANUP FAILED: approval test config restore:{cleanup_note}")
+        try:
+            cleanup_note = close_lima_and_restore(executor, backup)
+            if cleanup_note:
+                raise TestCleanupError(cleanup_note)
+            shutil.rmtree(recovery)
+        except Exception as error:
+            raise TestCleanupError(
+                f"CLEANUP FAILED: approval test config restore: {error}. "
+                f"Original config backup retained at {recovery}; stop testing until restored.") from error
 
 
 def ensure_lima_ready(executor):
