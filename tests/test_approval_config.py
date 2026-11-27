@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'regression_tests'))
 from approval_tests import _common
 import lima_backup
+import lima_action_approver
 
 
 class ApprovalConfigTests(unittest.TestCase):
@@ -27,6 +28,11 @@ class ApprovalConfigTests(unittest.TestCase):
         manager.launch.return_value = True
         manager.refocus.return_value = True
         self.executor = Mock(process_manager=manager)
+        self.user32 = Mock()
+        self.user32.RegisterHotKey.return_value = True
+        p = patch.object(_common.ctypes, 'WinDLL', return_value=self.user32)
+        p.start()
+        self.addCleanup(p.stop)
         for target in ('lima_backup.time.sleep', 'approval_tests._common.time.sleep',
                        'approval_tests._common.pyautogui'):
             p = patch(target)
@@ -97,6 +103,54 @@ class ApprovalConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'CLEANUP FAILED.*locked'):
                 with _common.approval_config(self.executor):
                     self.assert_enabled()
+
+    def test_test_bindings_are_temporary_and_probes_are_released(self):
+        with _common.approval_config(self.executor, answer_hotkeys=True):
+            config = json.loads(self.config.read_text())
+            self.assertEqual(config['approve_action_hotkey'], {'modifier': 'ctrl+alt+shift', 'key': 'f11'})
+            self.assertEqual(config['deny_action_hotkey'], {'modifier': 'ctrl+alt+shift', 'key': 'f12'})
+        self.assertEqual(self.user32.UnregisterHotKey.call_count, 2)
+        self.assertEqual(self.config.read_bytes(), self.original)
+
+    def test_occupied_test_binding_uses_another_key(self):
+        self.user32.RegisterHotKey.side_effect = [False, True, True]
+        with patch.object(_common.ctypes, 'get_last_error', return_value=1409):
+            bindings = _common._test_answer_hotkeys(self.executor)
+        self.assertEqual(bindings['approve_action_hotkey']['key'], 'f12')
+        self.assertEqual(bindings['deny_action_hotkey']['key'], 'f9')
+        self.assertEqual(self.user32.UnregisterHotKey.call_count, 2)
+
+    def test_all_bindings_occupied_fails_setup_and_restores_config(self):
+        self.user32.RegisterHotKey.return_value = False
+        with patch.object(_common.ctypes, 'get_last_error', return_value=1409):
+            with self.assertRaisesRegex(RuntimeError, 'SETUP FAILED: no two available'):
+                with _common.approval_config(self.executor, answer_hotkeys=True):
+                    self.fail('Scenario must not start')
+        self.assertEqual(self.config.read_bytes(), self.original)
+        self.user32.UnregisterHotKey.assert_not_called()
+
+    def test_other_lima_binding_is_not_reused(self):
+        self.config.write_text(json.dumps({'quick_input_hotkey': {
+            'modifier': 'shift+ctrl+alt', 'key': 'f11'}}))
+        bindings = _common._test_answer_hotkeys(self.executor)
+        self.assertEqual(bindings['approve_action_hotkey']['key'], 'f12')
+        self.assertEqual(bindings['deny_action_hotkey']['key'], 'f9')
+
+    def test_unexpected_probe_error_is_reported(self):
+        self.user32.RegisterHotKey.return_value = False
+        with patch.object(_common.ctypes, 'get_last_error', return_value=5):
+            with self.assertRaisesRegex(RuntimeError, 'Windows error 5'):
+                _common._test_answer_hotkeys(self.executor)
+
+    def test_hotkey_answer_reads_the_tested_instance_config(self):
+        self.config.write_text(json.dumps({'deny_action_hotkey': {
+            'modifier': 'ctrl+alt+shift', 'key': 'f12'}}))
+        with patch.object(lima_action_approver, 'pyautogui') as keyboard, \
+             patch.object(lima_action_approver, '_wait_until_closed', return_value=True):
+            self.assertTrue(lima_action_approver.answer_action_prompt(
+                123, False, via=lima_action_approver.VIA_HOTKEY,
+                install_path=self.executor.process_manager.install_path))
+        keyboard.hotkey.assert_called_once_with('ctrl', 'alt', 'shift', 'f12')
 
     def test_every_approval_module_runs_with_config_and_restores_it(self):
         modules = ('test_10_deny_stops_action', 'test_20_deny_with_replacement',

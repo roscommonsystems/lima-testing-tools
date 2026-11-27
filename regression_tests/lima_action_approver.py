@@ -267,7 +267,7 @@ def _invoke_answer_button(hwnd, approve):
     button.GetInvokePattern().Invoke()
 
 
-def answer_action_prompt(prompt, approve, via=VIA_BUTTON, settle_timeout=10.0):
+def answer_action_prompt(prompt, approve, via=VIA_BUTTON, settle_timeout=10.0, install_path=None):
     """
     Answer an approval popup Yes or No.
 
@@ -279,6 +279,8 @@ def answer_action_prompt(prompt, approve, via=VIA_BUTTON, settle_timeout=10.0):
         settle_timeout: how long to wait for the popup to close. On No the popup closes and
             the replacement popup opens, so this returns before that popup is ready — call
             wait_for_replacement_prompt() next.
+        install_path: the LIMA instance whose config supplies the hotkeys. Defaults to
+            the discovered installation.
 
     Returns:
         bool: True when the popup closed, i.e. LIMA accepted the answer.
@@ -302,7 +304,7 @@ def answer_action_prompt(prompt, approve, via=VIA_BUTTON, settle_timeout=10.0):
     elif via == VIA_KEY:
         pyautogui.press("y" if approve else "n")
     else:
-        hotkeys = get_answer_hotkeys()
+        hotkeys = get_answer_hotkeys(install_path)
         pyautogui.hotkey(*hotkeys["approve" if approve else "deny"])
 
     closed = _wait_until_closed(hwnd, settle_timeout)

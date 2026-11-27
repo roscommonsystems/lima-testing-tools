@@ -8,6 +8,7 @@ keys and hotkeys) can be added as one new file each without touching this one.
 """
 
 import time
+import ctypes
 from contextlib import contextmanager
 
 import psutil
@@ -36,13 +37,48 @@ def _require_approval_config(executor):
             "LIMA's config.json; opening a program otherwise runs without approval.")
 
 
+def _test_answer_hotkeys(executor):
+    """Find two unoccupied test bindings without changing any desktop shortcuts.
+
+    NVDA's desktop shortcut commonly reserves Ctrl+Alt+N even while NVDA is closed.
+    Probe temporary function-key bindings with Windows, releasing each probe immediately.
+    The surrounding approval_config backup restores the user's bindings after the test.
+    """
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    config = read_lima_config(executor.process_manager.install_path)
+    reserved = {
+        str(value.get("key", "")).lower()
+        for name, value in config.items()
+        if name.endswith("_hotkey") and isinstance(value, dict)
+        and set(str(value.get("modifier", "")).lower().split("+")) == {"ctrl", "alt", "shift"}
+    }
+    bindings = []
+    for number in (11, 12, 9, 10, 13, 14):
+        key = f"f{number}"
+        if key in reserved:
+            continue
+        # MOD_ALT | MOD_CONTROL | MOD_SHIFT; F1 is virtual key 0x70.
+        ctypes.set_last_error(0)
+        if user32.RegisterHotKey(None, 0xB000, 0x0007, 0x70 + number - 1):
+            try:
+                bindings.append({"modifier": "ctrl+alt+shift", "key": key})
+            finally:
+                user32.UnregisterHotKey(None, 0xB000)
+        elif ctypes.get_last_error() != 1409:
+            raise RuntimeError(f"SETUP FAILED: could not probe {key}: Windows error {ctypes.get_last_error()}")
+        if len(bindings) == 2:
+            return dict(zip(("approve_action_hotkey", "deny_action_hotkey"), bindings))
+    raise RuntimeError("SETUP FAILED: no two available approval test hotkeys")
+
+
 @contextmanager
-def approval_config(executor):
+def approval_config(executor, answer_hotkeys=False):
     """Enable action approval before launching LIMA; restore config even after failure.
 
     Use inside manual_approvals(), so the background approver stays paused during setup
     and cleanup. The setting also makes the question test exercise pre-approval of an
     otherwise gated action. Keep it enabled through the keyboard module's fresh launches.
+    With answer_hotkeys=True, also seed two available temporary answer bindings.
     """
     if not executor.process_manager.install_path:
         raise RuntimeError("SETUP FAILED: LIMA's install path is unknown")
@@ -51,7 +87,8 @@ def approval_config(executor):
         raise RuntimeError(f"SETUP FAILED: could not close LIMA before config backup: {close_error}")
     backup = backup_data(executor, "config.json")
     try:
-        seed_config(executor, ask_before_every_action=True)
+        settings = _test_answer_hotkeys(executor) if answer_hotkeys else {}
+        seed_config(executor, ask_before_every_action=True, **settings)
         _require_approval_config(executor)
         yield
     finally:

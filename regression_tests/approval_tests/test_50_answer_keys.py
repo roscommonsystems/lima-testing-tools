@@ -13,7 +13,8 @@ control. There are two ways to answer that way:
 Both must resolve the same pending decision as the buttons, and a No from either must still
 open the replacement popup. A user who has changed the hotkeys in Settings must not turn this
 test red, so the real bindings are read from LIMA's config and the results are named after
-them.
+them. This module temporarily configures available test hotkeys so a desktop shortcut
+such as NVDA's Ctrl+Alt+N cannot consume the answer. Original bindings are restored afterward.
 
 Each of the four inputs gets its own result line, so a failure says exactly which input
 stopped working instead of leaving one vague "answer keys" failure.
@@ -263,7 +264,7 @@ def _wait_for_turn_end(executor, snapshot):
     return denied
 
 
-def _press_answer(prompt, approve, via, label):
+def _press_answer(prompt, approve, via, label, install_path=None):
     """
     Answer the popup with the key or hotkey under test.
 
@@ -279,7 +280,7 @@ def _press_answer(prompt, approve, via, label):
         return False, (f"LIMA's approval popup closed before the {label} could be pressed, "
                        f"so the answer was never tested")
     print(f"  Answering with {label}: {'Yes' if approve else 'No'}")
-    if not answer_action_prompt(prompt, approve=approve, via=via):
+    if not answer_action_prompt(prompt, approve=approve, via=via, install_path=install_path):
         return False, (f"LIMA's approval popup did not close after the {label}, so the answer "
                        f"was not accepted")
     return True, ""
@@ -315,7 +316,8 @@ def _run_case(executor, approve, via, label):
 
     print(f"  LIMA asked to: {prompt.description!r}")
 
-    answered, message = _press_answer(prompt, approve, via, label)
+    answered, message = _press_answer(prompt, approve, via, label,
+                                      executor.process_manager.install_path)
     if not answered:
         return False, message
 
@@ -378,7 +380,7 @@ def _safe_run_case(executor, approve, via, label):
 
 def run(executor):
     """
-    Answer the approval popup four ways — Y, Ctrl+Alt+Y, N, Ctrl+Alt+N — one result each.
+    Answer the approval popup with Y, N and two temporary configured hotkeys.
 
     Each case runs in a LIMA launched for it alone, so it starts in a new conversation with no
     earlier instruction in the model's history, and its turn is over before the next case
@@ -386,12 +388,11 @@ def run(executor):
     previous case cannot prefix the next instruction.
     """
     results = []
-    with manual_approvals(), _common.approval_config(executor):
+    with manual_approvals(), _common.approval_config(executor, answer_hotkeys=True):
         try:
-            # Same call (and so the same config file) answer_action_prompt(via='hotkey') uses,
-            # so a result name can never disagree with the keys actually pressed. Read before
-            # the first launch, which is also when LIMA is definitely installed.
-            hotkeys = get_answer_hotkeys()
+            # Read the tested instance's seeded config, also used when pressing the answer,
+            # so result names and key presses agree even when testing a source checkout.
+            hotkeys = get_answer_hotkeys(executor.process_manager.install_path)
             names = _result_names(hotkeys)
             if not executor.process_manager.exe_full_path:
                 # Every case launches its own LIMA, so without the path there is nothing to test.
