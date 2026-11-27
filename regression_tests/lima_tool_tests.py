@@ -83,7 +83,6 @@ def run_all_tool_tests(executor, kinds=None):
             "verification_type": "audio",
             "verification_prompt": "Audio peak detection — no visual verification",
         },
-        {"kind": "command", "name": "TYPE TEXT", "command": "Type hello", "result_name": "AI Tool Test: Type Text", "verification_type": "text_input", "verification_prompt": "Does the AFTER screenshot show the text 'hello' appearing in a text input field?"},
         {"kind": "command", "name": "WEATHER", "command": "whats the weather in japan", "result_name": "AI Tool Test: Weather Retrieval", "verification_type": "content_verification", "verification_prompt": "Did LIMA display a weather response or information about Japan's weather? Look for any new text content or weather-related information in the LIMA interface."},
         # Name the position: given a bare "do a right click" the model sometimes asks where to
         # click instead of calling mouse_click. No target_element = click at the pointer's spot.

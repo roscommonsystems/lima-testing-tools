@@ -16,6 +16,8 @@ What is on the page (the names a test tells LIMA to act on):
 * Buttons **Apple**, **Banana** and **Cherry**.
 * A link, **Open the orchard page**, to a second page.
 * A form: **First name**, **City**, **Favourite fruit** and a **Send form** button.
+* A chat view: **Chat message** and **Send message**. Opening the page with
+  `?focus=chat-message` shows this view, hides the practice content and focuses the composer.
 * A **Key practice box** that records each key pressed while it has focus.
 * A **Fruit list** that scrolls on its own, beside the article.
 * An article long enough that the page itself scrolls, and a bar chart (see CHART_VALUES).
@@ -59,6 +61,8 @@ BUTTON_NAMES = ("Apple", "Banana", "Cherry")
 LINK_NAME = "Open the orchard page"
 FORM_FIELDS = ("First name", "City", "Favourite fruit")
 SUBMIT_NAME = "Send form"
+CHAT_FIELD_NAME = "Chat message"
+CHAT_SUBMIT_NAME = "Send message"
 KEY_BOX_NAME = "Key practice box"
 FRUIT_LIST_NAME = "Fruit list"
 
@@ -99,6 +103,17 @@ PAGE_TEMPLATE = """<!doctype html>
 </style>
 </head>
 <body>
+<section id="chat-practice" hidden>
+  <h1>Orchard chat</h1>
+  <p>Write a message. Enter sends it; Shift+Enter adds a new line.</p>
+  <div id="chat-history" role="log" aria-label="Sent messages"></div>
+  <form id="chat-form">
+    <label for="chat-message">__CHAT_FIELD_NAME__</label>
+    <textarea id="chat-message" aria-label="__CHAT_FIELD_NAME__" style="width: 600px; height: 100px"></textarea>
+    <p><button type="submit">__CHAT_SUBMIT_NAME__</button></p>
+  </form>
+</section>
+<div id="practice-content">
 <h1>__TITLE__</h1>
 
 <h2>Fruit buttons</h2>
@@ -132,6 +147,7 @@ __FRUIT_ROWS__
   </div>
 </div>
 
+</div>
 <script>
 function report(kind, target, detail) {
   fetch("/event", {
@@ -182,6 +198,32 @@ watchScroll(window, "page", function () { return Math.round(window.scrollY); });
 var fruitList = document.getElementById("fruit-list");
 watchScroll(fruitList, "__FRUIT_LIST_NAME__", function () { return Math.round(fruitList.scrollTop); });
 var focusTarget = new URLSearchParams(window.location.search).get("focus");
+var chatMessage = document.getElementById("chat-message");
+var chatForm = document.getElementById("chat-form");
+chatMessage.addEventListener("input", function () {
+  report("field", "__CHAT_FIELD_NAME__", {value: chatMessage.value});
+});
+chatMessage.addEventListener("keydown", function (event) {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    chatForm.requestSubmit();
+  }
+});
+chatForm.addEventListener("submit", function (event) {
+  event.preventDefault();
+  var values = {};
+  values["__CHAT_FIELD_NAME__"] = chatMessage.value;
+  report("submit", "__CHAT_SUBMIT_NAME__", {values: values});
+  var sent = document.createElement("p");
+  sent.textContent = chatMessage.value;
+  document.getElementById("chat-history").appendChild(sent);
+  chatMessage.value = "";
+  report("field", "__CHAT_FIELD_NAME__", {value: ""});
+});
+if (focusTarget === "chat-message") {
+  document.getElementById("practice-content").hidden = true;
+  document.getElementById("chat-practice").hidden = false;
+}
 if (focusTarget) {
   var element = document.getElementById(focusTarget);
   if (element) { element.focus(); }
@@ -399,7 +441,8 @@ class PracticePage:
         if path == "/":
             html = _fill(PAGE_TEMPLATE, title=PAGE_TITLE, buttons=_button_html(),
                          link_name=LINK_NAME, key_box_name=KEY_BOX_NAME, fields=_field_html(),
-                         submit_name=SUBMIT_NAME, article=_article_html(self.code_word),
+                         submit_name=SUBMIT_NAME, chat_field_name=CHAT_FIELD_NAME,
+                         chat_submit_name=CHAT_SUBMIT_NAME, article=_article_html(self.code_word),
                          fruit_list_name=FRUIT_LIST_NAME, fruit_rows=_fruit_rows_html(),
                          chart_title=CHART_TITLE)
             return html
@@ -484,6 +527,8 @@ class PracticePage:
         Args:
             path: the page to open, "/" for the practice page.
             **query: e.g. focus="key-box" to start with the key box focused.
+                focus="chat-message" selects the chat view, hides the practice content
+                and focuses the chat composer.
 
         Returns:
             int: the browser window's handle.
