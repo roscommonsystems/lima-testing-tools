@@ -10,6 +10,8 @@ The text is a code word made up for the run, so it can only be in the field beca
 typed it.
 """
 
+import time
+
 from ai_tool_tests import _common
 from feature_tests._common import make_code_word
 from lima_practice_page import FORM_FIELDS, SUBMIT_NAME, CHAT_FIELD_NAME, CHAT_SUBMIT_NAME
@@ -34,15 +36,20 @@ def case_name(case):
 
 def _check_for(code_word, must_submit, field_name=FIELD_NAME, submit_name=SUBMIT_NAME):
     def check(page, since):
-        submit = page.wait_for_event("submit", target=submit_name, since=since,
-                                     timeout=_common.EVENT_TIMEOUT)
+        # The turn has ended, but browser event posts may still be in flight. Wait
+        # for the whole delivery window even when the first submission is present.
+        time.sleep(_common.EVENT_TIMEOUT)
+        submissions = page.events("submit", target=submit_name, since=since)
         typed = page.field_value(field_name)
-        if not must_submit and submit is not None:
+        if not must_submit and submissions:
             outcome = f"{submit_name} was triggered although the instruction did not authorize submission."
             return False, outcome
         if must_submit:
-            if submit is None:
+            if not submissions:
                 return False, f"{submit_name} was never triggered. The field holds {typed!r}."
+            if len(submissions) != 1:
+                return False, f"{submit_name} was triggered {len(submissions)} times, expected exactly once."
+            submit = submissions[0]
             sent_text = submit.get("detail", {}).get("values", {}).get(field_name)
             if sent_text != code_word:
                 return False, f"{submit_name} submitted {sent_text!r}, expected exactly {code_word!r}."

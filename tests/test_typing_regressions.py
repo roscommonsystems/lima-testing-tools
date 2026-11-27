@@ -2,7 +2,7 @@
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'regression_tests'))
 from ai_tool_tests.test_30_type_text import _check_for, FIELD_NAME
@@ -10,14 +10,36 @@ from lima_practice_page import CHAT_FIELD_NAME, CHAT_SUBMIT_NAME
 
 
 class TypingOutcomeTests(unittest.TestCase):
-    def check_case(self, typed, submitted=None, must_submit=False, chat=False):
+    def check_case(self, typed, submitted=None, must_submit=False, chat=False, extra_submissions=()):
         page = Mock()
         page.field_value.return_value = typed
-        page.wait_for_event.return_value = submitted
+        submissions = [] if submitted is None else [submitted]
+        page.events.return_value = submissions
         kwargs = dict(field_name=CHAT_FIELD_NAME, submit_name=CHAT_SUBMIT_NAME) if chat else {}
-        result = _check_for('draft123', must_submit, **kwargs)(page, 100.0)
-        self.assertEqual(page.wait_for_event.call_args.kwargs['since'], 100.0)
+        # Deliver extra events during the grace period, after a first event could
+        # already have made wait_for_event return.
+        with patch('ai_tool_tests.test_30_type_text.time.sleep',
+                   side_effect=lambda _: submissions.extend(extra_submissions)) as sleep:
+            result = _check_for('draft123', must_submit, **kwargs)(page, 100.0)
+        sleep.assert_called_once()
+        page.events.assert_called_once_with('submit', target=CHAT_SUBMIT_NAME if chat else 'Send form',
+                                            since=100.0)
         return result[0]
+
+    def test_extra_sends_fail_even_when_the_first_payload_is_correct(self):
+        for chat in (False, True):
+            field = CHAT_FIELD_NAME if chat else FIELD_NAME
+            first = {'detail': {'values': {field: 'draft123'}}}
+            for text in ('wrong', '', 'draft123'):
+                with self.subTest(chat=chat, second_payload=text):
+                    second = {'detail': {'values': {field: text}}}
+                    self.assertFalse(self.check_case('' if chat else 'draft123', first,
+                                                     must_submit=True, chat=chat,
+                                                     extra_submissions=[second]))
+
+    def test_late_unauthorized_submission_fails(self):
+        event = {'detail': {'values': {FIELD_NAME: 'draft123'}}}
+        self.assertFalse(self.check_case('draft123', extra_submissions=[event]))
 
     def test_exact_unsubmitted_text_passes(self):
         self.assertTrue(self.check_case('draft123'))
