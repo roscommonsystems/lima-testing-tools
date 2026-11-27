@@ -22,6 +22,10 @@ class TypingOutcomeTests(unittest.TestCase):
     def test_exact_unsubmitted_text_passes(self):
         self.assertTrue(self.check_case('draft123'))
 
+    def test_form_text_fails_when_submitted_without_authorization(self):
+        event = {'detail': {'values': {FIELD_NAME: 'draft123'}}}
+        self.assertFalse(self.check_case('draft123', event))
+
     def test_extra_text_cannot_pass_by_containing_the_code_word(self):
         self.assertFalse(self.check_case('draft123 has been typed'))
 

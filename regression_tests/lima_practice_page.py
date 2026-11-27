@@ -16,6 +16,8 @@ What is on the page (the names a test tells LIMA to act on):
 * Buttons **Apple**, **Banana** and **Cherry**.
 * A link, **Open the orchard page**, to a second page.
 * A form: **First name**, **City**, **Favourite fruit** and a **Send form** button.
+* A chat view: **Chat message** and **Send message**. Opening the page with
+  `?focus=chat-message` shows this view, hides the practice content and focuses the composer.
 * A **Key practice box** that records each key pressed while it has focus.
 * A **Fruit list** that scrolls on its own, beside the article.
 * An article long enough that the page itself scrolls, and a bar chart (see CHART_VALUES).
@@ -525,6 +527,8 @@ class PracticePage:
         Args:
             path: the page to open, "/" for the practice page.
             **query: e.g. focus="key-box" to start with the key box focused.
+                focus="chat-message" selects the chat view, hides the practice content
+                and focuses the chat composer.
 
         Returns:
             int: the browser window's handle.
